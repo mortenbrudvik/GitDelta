@@ -139,20 +139,12 @@ public partial class MainWindow : FluentWindow, IWindow
 
     private static void TryLaunchEditor(string commandTemplate, string filePath)
     {
-        // Substitute {file} placeholder; if absent, append the path as a quoted arg.
-        var hasPlaceholder = commandTemplate.Contains("{file}", StringComparison.OrdinalIgnoreCase);
-        var expanded = hasPlaceholder
-            ? commandTemplate.Replace("{file}", filePath, StringComparison.OrdinalIgnoreCase)
-            : $"{commandTemplate} \"{filePath}\"";
-
-        // Parse respecting quotes so editor paths with spaces (e.g.
-        // "C:\Program Files\Microsoft VS Code\Code.exe -g {file}") survive.
-        var argv = SplitCommandLine(expanded);
-        if (argv.Length > 0)
+        // Parse the TEMPLATE (with {file} left as a literal bare token) so editor paths with
+        // spaces (e.g. "C:\Program Files\Microsoft VS Code\Code.exe" -g {file}) survive, then
+        // substitute {file} POST-PARSE so a spaced FILE path stays a single argv element.
+        var templateArgv = SplitCommandLine(commandTemplate);
+        if (EditorCommandBuilder.TryBuild(templateArgv, filePath, out var fileName, out var arguments))
         {
-            var fileName = argv[0];
-            var arguments = string.Join(' ', argv.Skip(1).Select(QuoteIfNeeded));
-
             try
             {
                 Process.Start(new ProcessStartInfo
@@ -213,11 +205,6 @@ public partial class MainWindow : FluentWindow, IWindow
             LocalFree(argvPtr);
         }
     }
-
-    private static string QuoteIfNeeded(string arg) =>
-        arg.Contains(' ', StringComparison.Ordinal) && !arg.StartsWith('"')
-            ? $"\"{arg}\""
-            : arg;
 
     [DllImport("shell32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern nint CommandLineToArgvW(string lpCmdLine, out int pNumArgs);
