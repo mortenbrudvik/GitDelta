@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using GitDelta.Core.Models;
 using GitDelta.Core.Settings;
 using GitDelta.UI.Services;
 using GitDelta.UI.ViewModels;
@@ -13,6 +14,7 @@ public partial class MainWindow : FluentWindow, IWindow
     private readonly IThemeService _themeService;
     private readonly ISettingsStore _settingsStore;
     private ShellViewModel? _subscribedShell;
+    private bool _watchingSystemTheme;
 
     public MainWindow(IThemeService themeService, ISettingsStore settingsStore)
     {
@@ -20,8 +22,12 @@ public partial class MainWindow : FluentWindow, IWindow
         _settingsStore = settingsStore;
         InitializeComponent();
 
-        // Track Windows light/dark changes while AppTheme.System is in effect.
-        SystemThemeWatcher.Watch(this);
+        // Follow the OS light/dark setting ONLY while the user's choice is AppTheme.System.
+        // SystemThemeWatcher applies the theme out-of-band (bypassing IThemeService), so for an
+        // explicit Light/Dark choice it must stay unwatched, otherwise an OS theme change would
+        // silently override the user's selection. ThemeService keeps the diff syntax palette in
+        // sync via ApplicationThemeManager.Changed whenever the watcher does apply a theme.
+        UpdateSystemThemeWatcher();
 
         DataContextChanged += OnDataContextChanged;
         Closing += OnWindowClosing;
@@ -31,6 +37,32 @@ public partial class MainWindow : FluentWindow, IWindow
     private void OnToggleThemeClick(object sender, RoutedEventArgs e)
     {
         _themeService.Toggle();
+        UpdateSystemThemeWatcher();
+    }
+
+    // Watch the OS theme only while the user's choice is AppTheme.System; for an explicit
+    // Light/Dark choice, unwatch so an OS theme change cannot override the user's selection.
+    // The state flag ensures we never UnWatch a window that was never watched (it has no HWND
+    // yet during construction, where UnWatch is unsafe) and never re-Watch redundantly. Watch is
+    // safe to call pre-HWND: WPF-UI defers the hook to the window's SourceInitialized.
+    private void UpdateSystemThemeWatcher()
+    {
+        var shouldWatch = _settingsStore.Load().Theme == AppTheme.System;
+        if (shouldWatch == _watchingSystemTheme)
+        {
+            return;
+        }
+
+        if (shouldWatch)
+        {
+            SystemThemeWatcher.Watch(this);
+        }
+        else
+        {
+            SystemThemeWatcher.UnWatch(this);
+        }
+
+        _watchingSystemTheme = shouldWatch;
     }
 
     // ── DataContext wiring ─────────────────────────────────────────────────────
@@ -96,8 +128,9 @@ public partial class MainWindow : FluentWindow, IWindow
         var updated = vm.Result;
         _settingsStore.Save(updated);
 
-        // Apply theme immediately.
+        // Apply theme immediately, then re-evaluate OS-follow: watch only while System is chosen.
         _themeService.Apply(updated.Theme);
+        UpdateSystemThemeWatcher();
 
         // Propagate diff-related settings to the active shell.
         if (_subscribedShell is not null)
