@@ -1,60 +1,86 @@
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
-using GitDelta.UI.Views;
-using Wpf.Ui.Appearance;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
+using GitDelta.UI.DependencyInjection;
+using GitDelta.UI.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace GitDelta.UI;
 
 public partial class App : Application
 {
+    private IHost? _host;
+
     protected override void OnStartup(StartupEventArgs e)
     {
-        AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
-        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
-
         base.OnStartup(e);
 
-        // Match the OS light/dark setting before the window is shown so there is no theme flash.
-        ApplicationThemeManager.ApplySystemTheme();
+        // Global handler 2/3: exceptions on non-UI threads.
+        AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
 
-        var mainWindow = new MainWindow();
-        mainWindow.Show();
+        // Global handler 3/3: unobserved faulted Tasks.
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
+        _host = Host.CreateDefaultBuilder()
+            .UseServiceProviderFactory(new AutofacServiceProviderFactory())
+            .ConfigureContainer<ContainerBuilder>(builder =>
+            {
+                builder.RegisterModule<LoggingModule>();
+                builder.RegisterModule<UiModule>();
+            })
+            .ConfigureServices(services =>
+            {
+                services.AddHostedService<ApplicationHostService>();
+            })
+            .Build();
+
+        _host.Start();
     }
 
-    private static void OnDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    protected override async void OnExit(ExitEventArgs e)
     {
-        if (e.ExceptionObject is Exception ex)
+        if (_host is not null)
         {
-            // TODO (Phase 5): replace Trace with ILogger.
-            Trace.TraceError("Unhandled AppDomain exception: {0}", ex);
-
-            MessageBox.Show(
-                $"An unexpected error occurred: {ex.Message}",
-                "GitDelta",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            await _host.StopAsync();
+            _host.Dispose();
         }
+
+        NLog.LogManager.Shutdown();
+        base.OnExit(e);
     }
 
-    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
-    {
-        // TODO (Phase 5): replace Trace with ILogger.
-        Trace.TraceError("Unobserved task exception: {0}", e.Exception);
-        e.SetObserved();
-    }
-
+    // Global handler 1/3: exceptions on the WPF UI (Dispatcher) thread.
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        // TODO (Phase 5): replace Trace with ILogger.
-        Trace.TraceError("Unhandled dispatcher exception: {0}", e.Exception);
+        GetLogger()?.LogCritical(e.Exception, "Unhandled UI (dispatcher) exception");
 
         MessageBox.Show(
-            $"An unexpected error occurred: {e.Exception.Message}",
+            $"An unexpected error occurred:\n\n{e.Exception.Message}",
             "GitDelta",
             MessageBoxButton.OK,
             MessageBoxImage.Error);
 
+        // Keep the app alive after logging + notifying the user.
         e.Handled = true;
     }
+
+    private void OnDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        if (e.ExceptionObject is Exception ex)
+        {
+            GetLogger()?.LogCritical(ex, "Unhandled non-UI (AppDomain) exception. Terminating={Terminating}", e.IsTerminating);
+        }
+    }
+
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        GetLogger()?.LogError(e.Exception, "Unobserved task exception");
+        e.SetObserved();
+    }
+
+    private ILogger<App>? GetLogger() =>
+        _host?.Services.GetService<ILoggerFactory>()?.CreateLogger<App>();
 }
