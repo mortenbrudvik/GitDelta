@@ -12,9 +12,9 @@
 
   <Grid Background="{DynamicResource ApplicationBackgroundBrush}">
     <Grid.ColumnDefinitions>
-      <ColumnDefinition Width="280" MinWidth="200" />
+      <ColumnDefinition x:Name="HistoryColumn" Width="280" MinWidth="200" />
       <ColumnDefinition Width="Auto" />
-      <ColumnDefinition Width="260" MinWidth="180" />
+      <ColumnDefinition x:Name="FilesColumn" Width="260" MinWidth="180" />
       <ColumnDefinition Width="Auto" />
       <ColumnDefinition Width="*" MinWidth="320" />
     </Grid.ColumnDefinitions>
@@ -113,7 +113,8 @@
         Width="6"
         HorizontalAlignment="Center"
         VerticalAlignment="Stretch"
-        Background="Transparent" />
+        Background="Transparent"
+        DragCompleted="OnGridSplitterDragCompleted" />
 
     <!-- ============ Middle: Changed files ============ -->
     <Grid Grid.Column="2" Margin="4,8,4,8">
@@ -192,7 +193,8 @@
         Width="6"
         HorizontalAlignment="Center"
         VerticalAlignment="Stretch"
-        Background="Transparent" />
+        Background="Transparent"
+        DragCompleted="OnGridSplitterDragCompleted" />
 
     <!-- ============ Right: Diff area (DiffView placeholder, Phase 7) ============ -->
     <Grid Grid.Column="4" Margin="4,8,8,8">

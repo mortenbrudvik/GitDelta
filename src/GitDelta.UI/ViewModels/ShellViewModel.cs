@@ -57,6 +57,9 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         // ShellViewModel is transient; IThemeService is a singleton. Subscribe here
         // and unsubscribe in Dispose so a replaced shell can never leak via this
         // event (MainWindowViewModel.DetachCurrentContent disposes the old shell).
+        _historyPaneWidth = _appSettings.HistoryPaneWidth;
+        _filesPaneWidth = _appSettings.FilesPaneWidth;
+
         _themeService.IsDarkChanged += OnThemeIsDarkChanged;
     }
 
@@ -98,6 +101,22 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string? _statusMessage;
+
+    [ObservableProperty]
+    private double _historyPaneWidth;
+
+    [ObservableProperty]
+    private double _filesPaneWidth;
+
+    partial void OnHistoryPaneWidthChanged(double value) => PersistPaneWidths();
+
+    partial void OnFilesPaneWidthChanged(double value) => PersistPaneWidths();
+
+    private void PersistPaneWidths()
+    {
+        var current = _settings.Load();
+        _settings.Save(current with { HistoryPaneWidth = HistoryPaneWidth, FilesPaneWidth = FilesPaneWidth });
+    }
 
     public WorkingTreeRowViewModel WorkingTreeRow { get; }
 

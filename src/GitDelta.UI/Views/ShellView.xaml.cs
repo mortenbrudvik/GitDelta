@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using GitDelta.UI.ViewModels;
@@ -9,9 +10,70 @@ public partial class ShellView : UserControl
     public ShellView()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+        DataContextChanged += OnDataContextChanged;
     }
 
     private ShellViewModel? ViewModel => DataContext as ShellViewModel;
+
+    // ── Pane-width persistence ──────────────────────────────────────────────────
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        RestorePaneWidths();
+    }
+
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is ShellViewModel oldVm)
+        {
+            oldVm.PropertyChanged -= OnVmPropertyChanged;
+        }
+
+        if (e.NewValue is ShellViewModel newVm)
+        {
+            newVm.PropertyChanged += OnVmPropertyChanged;
+        }
+
+        RestorePaneWidths();
+    }
+
+    private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Intentionally empty — pane widths are pushed by code-behind to VM
+        // via the GridSplitter DragCompleted handler, not the other way.
+    }
+
+    private void RestorePaneWidths()
+    {
+        var vm = ViewModel;
+        if (vm is null || !IsLoaded)
+        {
+            return;
+        }
+
+        if (vm.HistoryPaneWidth >= 50)
+        {
+            HistoryColumn.Width = new GridLength(vm.HistoryPaneWidth);
+        }
+
+        if (vm.FilesPaneWidth >= 50)
+        {
+            FilesColumn.Width = new GridLength(vm.FilesPaneWidth);
+        }
+    }
+
+    private void OnGridSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        var vm = ViewModel;
+        if (vm is null)
+        {
+            return;
+        }
+
+        vm.HistoryPaneWidth = HistoryColumn.Width.Value;
+        vm.FilesPaneWidth = FilesColumn.Width.Value;
+    }
 
     // ── Toolbar click handlers (call DiffView public methods directly) ─────────
 
