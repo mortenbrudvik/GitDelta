@@ -39,6 +39,7 @@
           <ui:Button
               Margin="16,0,0,0"
               Padding="8,4"
+              Appearance="Secondary"
               Command="{Binding CurrentContent.OpenFolderCommand}"
               Content="Open folder"
               Icon="{ui:SymbolIcon FolderOpen24}"

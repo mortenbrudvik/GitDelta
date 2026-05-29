@@ -2,7 +2,6 @@ using System.Windows;
 using GitDelta.Core.Cli;
 using GitDelta.UI.ViewModels;
 using GitDelta.UI.Views;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -10,18 +9,21 @@ namespace GitDelta.UI.Services;
 
 public sealed class ApplicationHostService : IHostedService
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly Func<IWindow> _windowFactory;
+    private readonly Func<MainWindowViewModel> _viewModelFactory;
     private readonly IThemeService _themeService;
     private readonly LaunchAction _launchAction;
     private readonly ILogger<ApplicationHostService> _logger;
 
     public ApplicationHostService(
-        IServiceProvider serviceProvider,
+        Func<IWindow> windowFactory,
+        Func<MainWindowViewModel> viewModelFactory,
         IThemeService themeService,
         LaunchAction launchAction,
         ILogger<ApplicationHostService> logger)
     {
-        _serviceProvider = serviceProvider;
+        _windowFactory = windowFactory;
+        _viewModelFactory = viewModelFactory;
         _themeService = themeService;
         _launchAction = launchAction;
         _logger = logger;
@@ -37,8 +39,8 @@ public sealed class ApplicationHostService : IHostedService
         // Apply persisted theme before any window is shown to avoid a flash.
         _themeService.ApplyFromSettings();
 
-        var window = _serviceProvider.GetRequiredService<IWindow>();
-        var viewModel = _serviceProvider.GetRequiredService<MainWindowViewModel>();
+        var window = _windowFactory();
+        var viewModel = _viewModelFactory();
         window.DataContext = viewModel;
 
         window.Loaded += async (_, _) =>
@@ -46,8 +48,12 @@ public sealed class ApplicationHostService : IHostedService
             try
             {
                 // The launch action was parsed once in App.OnStartup and injected here;
-                // no re-parse of the command line.
-                await viewModel.InitializeAsync(_launchAction, cancellationToken);
+                // no re-parse of the command line. The StartAsync cancellation token is
+                // intentionally NOT forwarded: it signals host-startup cancellation and is
+                // already inert by the time Loaded fires (after the host has started and the
+                // window is shown), so passing it would only mask that the initial load is
+                // uncancelable. Use None to make that explicit.
+                await viewModel.InitializeAsync(_launchAction, CancellationToken.None);
             }
             catch (Exception ex)
             {

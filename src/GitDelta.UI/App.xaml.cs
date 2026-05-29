@@ -97,16 +97,30 @@ public partial class App : Application
         }
     }
 
-    protected override async void OnExit(ExitEventArgs e)
+    protected override void OnExit(ExitEventArgs e)
     {
-        if (_host is not null)
+        // Capture the logger before the host is disposed so a shutdown failure can still be
+        // recorded. OnExit is intentionally synchronous: WPF does not await an async void
+        // override, so blocking here guarantees host cleanup (and NLog flush) completes before
+        // the process tears down, instead of racing the continuation against process exit.
+        var logger = GetLogger();
+        try
         {
-            await _host.StopAsync();
-            _host.Dispose();
+            if (_host is not null)
+            {
+                _host.StopAsync().GetAwaiter().GetResult();
+                _host.Dispose();
+            }
         }
-
-        NLog.LogManager.Shutdown();
-        base.OnExit(e);
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "Error while stopping the application host during shutdown");
+        }
+        finally
+        {
+            NLog.LogManager.Shutdown();
+            base.OnExit(e);
+        }
     }
 
     // Global handler 1/3: exceptions on the WPF UI (Dispatcher) thread.

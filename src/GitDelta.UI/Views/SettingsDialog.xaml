@@ -23,25 +23,35 @@
 
   <StackPanel MinWidth="360" Margin="0,8">
 
-    <TextBlock Text="Theme" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <ui:TextBlock x:Name="ThemeLabel" Text="Theme" FontWeight="SemiBold" Margin="0,0,0,4" />
     <ComboBox ItemsSource="{Binding Source={StaticResource ThemeValues}}"
-              SelectedItem="{Binding Theme, Mode=TwoWay}" Margin="0,0,0,12" />
+              SelectedItem="{Binding Theme, Mode=TwoWay}"
+              AutomationProperties.LabeledBy="{Binding ElementName=ThemeLabel}"
+              Margin="0,0,0,12" />
 
-    <TextBlock Text="Default diff view" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <ui:TextBlock x:Name="DiffViewLabel" Text="Default diff view" FontWeight="SemiBold" Margin="0,0,0,4" />
     <ComboBox ItemsSource="{Binding Source={StaticResource DiffViewValues}}"
-              SelectedItem="{Binding DefaultDiffView, Mode=TwoWay}" Margin="0,0,0,12" />
+              SelectedItem="{Binding DefaultDiffView, Mode=TwoWay}"
+              AutomationProperties.LabeledBy="{Binding ElementName=DiffViewLabel}"
+              Margin="0,0,0,12" />
 
-    <TextBlock Text="Context lines" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <ui:TextBlock x:Name="ContextLinesLabel" Text="Context lines" FontWeight="SemiBold" Margin="0,0,0,4" />
     <ui:NumberBox Value="{Binding ContextLines, Mode=TwoWay}" Minimum="0" Maximum="50"
-                  SpinButtonPlacementMode="Inline" Margin="0,0,0,12" />
+                  SpinButtonPlacementMode="Inline"
+                  AutomationProperties.LabeledBy="{Binding ElementName=ContextLinesLabel}"
+                  Margin="0,0,0,12" />
 
-    <TextBlock Text="Tab size" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <ui:TextBlock x:Name="TabSizeLabel" Text="Tab size" FontWeight="SemiBold" Margin="0,0,0,4" />
     <ui:NumberBox Value="{Binding TabSize, Mode=TwoWay}" Minimum="1" Maximum="16"
-                  SpinButtonPlacementMode="Inline" Margin="0,0,0,12" />
+                  SpinButtonPlacementMode="Inline"
+                  AutomationProperties.LabeledBy="{Binding ElementName=TabSizeLabel}"
+                  Margin="0,0,0,12" />
 
-    <TextBlock Text="External editor command" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <ui:TextBlock x:Name="EditorCommandLabel" Text="External editor command" FontWeight="SemiBold" Margin="0,0,0,4" />
     <ui:TextBox Text="{Binding ExternalEditorCommand, Mode=TwoWay}"
-                PlaceholderText="e.g. code -g {file}:{line}" Margin="0,0,0,12" />
+                PlaceholderText="e.g. code -g {file}:{line}"
+                AutomationProperties.LabeledBy="{Binding ElementName=EditorCommandLabel}"
+                Margin="0,0,0,12" />
 
     <ui:ToggleSwitch Content="Syntax highlighting"
                      IsChecked="{Binding SyntaxHighlighting, Mode=TwoWay}" />

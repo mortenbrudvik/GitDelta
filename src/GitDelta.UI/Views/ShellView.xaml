@@ -58,6 +58,7 @@
           <ToggleButton
               Grid.Row="0"
               Margin="8,8,8,4"
+              MinHeight="32"
               HorizontalContentAlignment="Left"
               Command="{Binding SelectWorkingTreeCommand}"
               IsChecked="{Binding WorkingTreeRow.IsSelected, Mode=OneWay}">
@@ -287,9 +288,8 @@
             Command="{Binding Diff.ToggleWhitespaceCommand}"
             Content="Whitespace"
             Icon="{ui:SymbolIcon TextParagraph24}" />
-        <Separator Margin="8,2" />
+        <Separator Margin="8,0" />
         <ui:Button
-            Margin="0,0,0,0"
             Padding="8,4"
             Click="OnFind"
             Content="Find"
@@ -306,9 +306,8 @@
             Click="OnNextChange"
             Content="Next"
             Icon="{ui:SymbolIcon ChevronDown24}" />
-        <Separator Margin="8,2" />
+        <Separator Margin="8,0" />
         <ui:Button
-            Margin="0,0,0,0"
             Padding="8,4"
             Click="OnCopy"
             Content="Copy"
