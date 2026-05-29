@@ -83,8 +83,11 @@
           Severity="Error"
           Title="Couldn't open the repository" />
 
-      <!-- ContentDialogHost must overlay the content for dialogs to display correctly -->
-      <ui:ContentDialogHost x:Name="RootContentDialogHost" />
+      <!-- Dialog host. Last sibling = highest Z-order so the dialog overlays the content.
+           IsDisableSiblingsEnabled is required for modality: in this (non-legacy) hosting
+           mode the dialog renders only a centered card with no smoke overlay, so without
+           disabling the sibling content the dialog is see-through and click-through. -->
+      <ui:ContentDialogHost x:Name="RootContentDialogHost" IsDisableSiblingsEnabled="True" />
     </Grid>
   </Grid>
 
