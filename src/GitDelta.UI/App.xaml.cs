@@ -1,7 +1,10 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
+using GitDelta.Core.Cli;
+using GitDelta.UI.Cli;
 using GitDelta.UI.DependencyInjection;
 using GitDelta.UI.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +20,18 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Route args FIRST — before building the host or showing any window.
+        // e.Args excludes the exe path; cwd is the launching directory.
+        var action = ArgRouter.Route(e.Args, Directory.GetCurrentDirectory());
+
+        // Console-only fast paths: write to the parent terminal and exit without a window.
+        if (action.Kind is LaunchActionKind.PrintHelp or LaunchActionKind.PrintVersion)
+        {
+            RunConsoleMode(action);
+            Shutdown();
+            return;
+        }
 
         // Global handler 2/3: exceptions on non-UI threads.
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
@@ -38,6 +53,32 @@ public partial class App : Application
             .Build();
 
         _host.Start();
+    }
+
+    /// <summary>
+    /// Handles the console-only fast paths (--help, --version).
+    /// Attaches to the parent terminal if available; writes the requested text;
+    /// then detaches. If there is no parent console (e.g. launched from Explorer),
+    /// AttachConsole returns false and we silently exit.
+    /// </summary>
+    private static void RunConsoleMode(LaunchAction action)
+    {
+        var attached = NativeConsole.TryAttachToParentConsole();
+
+        if (action.Kind == LaunchActionKind.PrintHelp)
+        {
+            ConsoleOutput.WriteHelp();
+        }
+        else
+        {
+            ConsoleOutput.WriteVersion();
+        }
+
+        if (attached)
+        {
+            Console.Out.Flush();
+            NativeConsole.Detach();
+        }
     }
 
     protected override async void OnExit(ExitEventArgs e)
