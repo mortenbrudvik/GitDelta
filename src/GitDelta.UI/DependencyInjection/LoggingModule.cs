@@ -34,8 +34,9 @@ public sealed class LoggingModule : Module
             .As<ILoggerFactory>()
             .SingleInstance();
 
+        // ILogger<T> defaults to InstancePerDependency (the conventional MEL
+        // lifetime); the underlying ILoggerFactory remains SingleInstance.
         builder.RegisterGeneric(typeof(Logger<>))
-            .As(typeof(ILogger<>))
-            .SingleInstance();
+            .As(typeof(ILogger<>));
     }
 }

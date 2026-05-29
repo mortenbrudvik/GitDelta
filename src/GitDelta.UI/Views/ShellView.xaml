@@ -27,7 +27,7 @@
 
       <ui:TextBlock
           Grid.Row="0"
-          Margin="6,2,0,8"
+          Margin="8,4,0,8"
           Appearance="Secondary"
           FontTypography="Caption"
           Text="HISTORY" />
@@ -113,7 +113,7 @@
 
       <ui:TextBlock
           Grid.Row="0"
-          Margin="6,2,0,8"
+          Margin="8,4,0,8"
           Appearance="Secondary"
           FontTypography="Caption"
           Text="CHANGED FILES" />
@@ -134,7 +134,7 @@
             VirtualizingPanel.VirtualizationMode="Recycling">
           <ListBox.ItemTemplate>
             <DataTemplate>
-              <Grid Margin="4,3">
+              <Grid Margin="4,4">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="*" />
@@ -165,7 +165,7 @@
                       Foreground="{DynamicResource SystemFillColorSuccessBrush}"
                       Text="{Binding Added, StringFormat='+{0}'}" />
                   <TextBlock
-                      Margin="6,0,0,0"
+                      Margin="8,0,0,0"
                       Foreground="{DynamicResource SystemFillColorCriticalBrush}"
                       Text="{Binding Deleted, StringFormat='-{0}'}" />
                 </StackPanel>
@@ -193,7 +193,7 @@
       <!-- Diff toolbar: toggles bound to the Diff document VM. -->
       <StackPanel
           Grid.Row="0"
-          Margin="6,0,0,8"
+          Margin="8,0,0,8"
           Orientation="Horizontal">
         <ui:Button
             Padding="8,4"

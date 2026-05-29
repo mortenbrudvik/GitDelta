@@ -35,7 +35,7 @@ public sealed class ApplicationHostService : IHostedService
         // Apply persisted theme before any window is shown to avoid a flash.
         _themeService.ApplyFromSettings();
 
-        var window = _serviceProvider.GetRequiredService<MainWindow>();
+        var window = _serviceProvider.GetRequiredService<IWindow>();
         var viewModel = _serviceProvider.GetRequiredService<MainWindowViewModel>();
         window.DataContext = viewModel;
 
@@ -45,7 +45,7 @@ public sealed class ApplicationHostService : IHostedService
             {
                 var cliArgs = Environment.GetCommandLineArgs().Skip(1).ToArray();
                 var action = ArgRouter.Route(cliArgs, Directory.GetCurrentDirectory());
-                await viewModel.InitializeAsync(action, CancellationToken.None);
+                await viewModel.InitializeAsync(action, cancellationToken);
             }
             catch (Exception ex)
             {

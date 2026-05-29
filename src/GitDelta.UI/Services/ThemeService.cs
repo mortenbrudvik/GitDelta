@@ -64,6 +64,8 @@ public sealed class ThemeService : IThemeService
         }
     }
 
+    // Reads the actual Windows/OS theme (not the last-applied app theme) so that
+    // when Theme==System the effective IsDark reflects the real OS setting.
     private static bool SystemIsDark() =>
-        ApplicationThemeManager.GetAppTheme() == ApplicationTheme.Dark;
+        ApplicationThemeManager.GetSystemTheme() == SystemTheme.Dark;
 }

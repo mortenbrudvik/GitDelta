@@ -297,18 +297,6 @@ public class ShellViewModelTests
     }
 
     [Fact]
-    public void ToggleThemeCommand_FlipsDiffIsDarkTheme_AndPersists()
-    {
-        var sut = Create();
-        bool before = sut.Diff.IsDarkTheme;
-
-        sut.ToggleThemeCommand.Execute(null);
-
-        sut.Diff.IsDarkTheme.ShouldBe(!before);
-        _settings.Received().Save(Arg.Any<AppSettings>());
-    }
-
-    [Fact]
     public void OpenSettingsCommand_RaisesSettingsRequested()
     {
         var sut = Create();

@@ -44,12 +44,19 @@ public partial class ShellViewModel : ObservableObject
         {
             ViewMode = _appSettings.DefaultDiffView,
             TabSize = _appSettings.TabSize,
+            // Phase 7: IsDarkTheme will be set correctly once IThemeService is
+            // injected into ShellViewModel and an IsDarkChanged sync is added so
+            // the diff theme tracks the effective application theme. For now this
+            // is a best-effort initial value derived from persisted settings.
             IsDarkTheme = _appSettings.Theme == AppTheme.Dark
         };
     }
 
-    public string? RepoRoot { get; private set; }
-    public string? RepoName { get; private set; }
+    [ObservableProperty]
+    private string? _repoRoot;
+
+    [ObservableProperty]
+    private string? _repoName;
 
     [ObservableProperty]
     private bool _isRepoLoaded;
@@ -357,18 +364,10 @@ public partial class ShellViewModel : ObservableObject
         _historyLoaded += page.Count;
     }
 
-    [RelayCommand]
-    private void ToggleTheme()
-    {
-        bool nowDark = !Diff.IsDarkTheme;
-        Diff.IsDarkTheme = nowDark;
-
-        _appSettings = _appSettings with
-        {
-            Theme = nowDark ? AppTheme.Dark : AppTheme.Light
-        };
-        _settings.Save(_appSettings);
-    }
+    // Phase 7 will re-add a properly-wired theme command here (injecting
+    // IThemeService and syncing Diff.IsDarkTheme) once the DiffView consumes
+    // IsDarkTheme. The window-level toggle currently routes through
+    // MainWindow.xaml.cs -> IThemeService.Toggle().
 
     [RelayCommand]
     private void OpenSettings()
