@@ -170,7 +170,10 @@ public partial class DiffView : UserControl
         }
     }
 
-    private static void ConfigureEditor(
+    // The built-in search panel installed per editor (used by ShowFind).
+    private readonly Dictionary<TextEditor, ICSharpCode.AvalonEdit.Search.SearchPanel> _searchPanels = new();
+
+    private void ConfigureEditor(
         TextEditor editor,
         DiffLineBackgroundRenderer bg,
         ChangeBarMargin bar,
@@ -187,6 +190,9 @@ public partial class DiffView : UserControl
         editor.TextArea.TextView.BackgroundRenderers.Add(bg);
         editor.TextArea.LeftMargins.Insert(0, bar);
         editor.TextArea.TextView.LineTransformers.Add(intra); // intra last for now; syntax inserts before it in Phase 8
+
+        // Built-in incremental find (Ctrl+F) + programmatic ShowFind().
+        _searchPanels[editor] = ICSharpCode.AvalonEdit.Search.SearchPanel.Install(editor.TextArea);
     }
 
     private static void OnRenderInputChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -292,9 +298,76 @@ public partial class DiffView : UserControl
         }
     }
 
+    private TextEditor ActiveEditor =>
+        ViewMode == DiffViewMode.Unified ? UnifiedEditor : RightEditor;
+
+    private DiffDocumentSide? ActiveSide =>
+        ViewMode == DiffViewMode.Unified
+            ? (FileDiff is null ? null : DiffDocumentBuilder.Build(FileDiff, DiffViewMode.Unified).Unified)
+            : (FileDiff is null ? null : DiffDocumentBuilder.Build(FileDiff, DiffViewMode.SideBySide).Right);
+
     // --- Public methods (called by the diff toolbar in the shell) ---
-    public void GoToNextChange() { }
-    public void GoToPreviousChange() { }
-    public void ShowFind() { }
-    public void CopySelection() { }
+    public void GoToNextChange()
+    {
+        NavigateChange(forward: true);
+    }
+
+    public void GoToPreviousChange()
+    {
+        NavigateChange(forward: false);
+    }
+
+    public void ShowFind()
+    {
+        ConfigureEditorsOnce();
+        TextEditor editor = ActiveEditor;
+        editor.Focus();
+        if (_searchPanels.TryGetValue(editor, out ICSharpCode.AvalonEdit.Search.SearchPanel? panel))
+        {
+            panel.Open();
+        }
+    }
+
+    public void CopySelection()
+    {
+        TextEditor editor = ActiveEditor;
+        if (!string.IsNullOrEmpty(editor.SelectedText))
+        {
+            editor.Copy();
+        }
+    }
+
+    private void NavigateChange(bool forward)
+    {
+        DiffDocumentSide? side = ActiveSide;
+        TextEditor editor = ActiveEditor;
+        if (side is null || side.Rows.Count == 0)
+        {
+            return;
+        }
+
+        int currentRow = editor.TextArea.Caret.Line - 1; // 0-based row index
+        int count = side.Rows.Count;
+        int step = forward ? 1 : -1;
+
+        for (int n = 1; n <= count; n++)
+        {
+            int idx = currentRow + (step * n);
+            if (idx < 0 || idx >= count)
+            {
+                break;
+            }
+
+            DiffRowKind kind = side.Rows[idx].Kind;
+            if (kind is DiffRowKind.Added or DiffRowKind.Deleted or DiffRowKind.Modified)
+            {
+                int docLine = idx + 1;
+                editor.ScrollToLine(docLine);
+                editor.TextArea.Caret.Line = docLine;
+                editor.TextArea.Caret.Column = 1;
+                editor.TextArea.Caret.BringCaretToView();
+                return;
+            }
+        }
+    }
 }
