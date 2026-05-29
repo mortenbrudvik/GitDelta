@@ -95,6 +95,7 @@
                 <StackPanel Margin="4,2">
                   <TextBlock
                       FontWeight="SemiBold"
+                      Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                       Text="{Binding Subject}"
                       TextTrimming="CharacterEllipsis" />
                   <StackPanel Orientation="Horizontal">
