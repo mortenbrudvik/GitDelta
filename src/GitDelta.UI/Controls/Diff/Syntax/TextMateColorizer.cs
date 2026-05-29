@@ -59,14 +59,24 @@ public sealed class TextMateColorizer : DocumentColorizingTransformer
 
     private IStateStack? GetStartState(DocumentLine line)
     {
-        if (_lineStartState.TryGetValue(line.LineNumber, out IStateStack? state))
+        int target = line.LineNumber;
+        if (_lineStartState.TryGetValue(target, out IStateStack? state))
         {
             return state;
         }
 
-        // Tokenize all preceding lines once to build the state chain up to this line.
-        IStateStack? running = null;
-        for (int n = 1; n < line.LineNumber; n++)
+        // Resume from the NEAREST already-cached line at or below the target instead
+        // of always restarting at line 1, so scroll-down and re-applies don't redo the
+        // whole prefix on the render thread (review fix #2). Line 1 is always cached
+        // (seeded null in the constructor), so this loop always finds a resume point.
+        int resumeAt = target;
+        while (resumeAt > 1 && !_lineStartState.ContainsKey(resumeAt))
+        {
+            resumeAt--;
+        }
+
+        IStateStack? running = _lineStartState[resumeAt];
+        for (int n = resumeAt; n < target; n++)
         {
             DocumentLine prior = CurrentContext.Document.GetLineByNumber(n);
             string priorText = CurrentContext.Document.GetText(prior);

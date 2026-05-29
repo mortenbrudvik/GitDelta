@@ -229,7 +229,14 @@ public partial class DiffView : UserControl
 
         _themeProvider = new TextMateThemeProvider(IsDarkTheme);
 
-        foreach (TextEditor editor in new[] { LeftEditor, RightEditor, UnifiedEditor })
+        // Only colorize the editors that are actually visible for the current mode;
+        // adding a colorizer to the hidden editor wastes a grammar/colorizer alloc
+        // that is never rendered (review fix #3).
+        TextEditor[] activeEditors = ViewMode == DiffViewMode.Unified
+            ? new[] { UnifiedEditor }
+            : new[] { LeftEditor, RightEditor };
+
+        foreach (TextEditor editor in activeEditors)
         {
             int lineCount = editor.Document.LineCount;
             int chars = editor.Document.TextLength;
@@ -282,6 +289,10 @@ public partial class DiffView : UserControl
         _syntaxColorizers.Clear();
     }
 
+    // Cached document model for the current FileDiff/ViewMode; rebuilt only when
+    // those change (in Rebuild). Navigation reads ActiveSide from this (review fix #1).
+    private DiffDocumentModel? _lastModel;
+
     private void Rebuild()
     {
         ConfigureEditorsOnce();
@@ -289,12 +300,14 @@ public partial class DiffView : UserControl
 
         if (diff is null)
         {
+            _lastModel = null;
             ShowOverlay(EmptyState, null);
             return;
         }
 
         if (diff.IsBinary)
         {
+            _lastModel = null;
             ShowOverlay(PlaceholderState, "Binary file — no textual diff");
             return;
         }
@@ -303,7 +316,10 @@ public partial class DiffView : UserControl
         EmptyState.Visibility = Visibility.Collapsed;
         PlaceholderState.Visibility = Visibility.Collapsed;
 
+        // Build once per FileDiff/ViewMode change and cache so navigation does not
+        // re-run the O(N) builder on every keypress (review fix #1).
         DiffDocumentModel model = DiffDocumentBuilder.Build(diff, ViewMode);
+        _lastModel = model;
 
         if (ViewMode == DiffViewMode.Unified)
         {
@@ -380,9 +396,7 @@ public partial class DiffView : UserControl
         ViewMode == DiffViewMode.Unified ? UnifiedEditor : RightEditor;
 
     private DiffDocumentSide? ActiveSide =>
-        ViewMode == DiffViewMode.Unified
-            ? (FileDiff is null ? null : DiffDocumentBuilder.Build(FileDiff, DiffViewMode.Unified).Unified)
-            : (FileDiff is null ? null : DiffDocumentBuilder.Build(FileDiff, DiffViewMode.SideBySide).Right);
+        ViewMode == DiffViewMode.Unified ? _lastModel?.Unified : _lastModel?.Right;
 
     // --- Public methods (called by the diff toolbar in the shell) ---
     public void GoToNextChange()
