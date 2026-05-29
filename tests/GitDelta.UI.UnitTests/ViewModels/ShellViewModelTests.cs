@@ -16,6 +16,7 @@ public class ShellViewModelTests
     private readonly IIntraLineDiffer _intra = Substitute.For<IIntraLineDiffer>();
     private readonly ISettingsStore _settings = Substitute.For<ISettingsStore>();
     private readonly IFolderPicker _picker = Substitute.For<IFolderPicker>();
+    private readonly IThemeService _theme = Substitute.For<IThemeService>();
 
     public ShellViewModelTests()
     {
@@ -29,7 +30,7 @@ public class ShellViewModelTests
     }
 
     private ShellViewModel Create() =>
-        new(_git, _intra, _settings, _picker);
+        new(_git, _intra, _settings, _picker, _theme);
 
     private static CommitInfo Commit(string sha, params string[] parents) =>
         new(sha, sha[..Math.Min(7, sha.Length)], parents,
@@ -333,5 +334,49 @@ public class ShellViewModelTests
         sut.OpenFileInEditorCommand.Execute(null);
 
         raised.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void NewInstance_SeedsDiffIsDarkThemeFromThemeService()
+    {
+        _theme.IsDark.Returns(true);
+
+        var sut = Create();
+
+        sut.Diff.IsDarkTheme.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void WhenThemeServiceRaisesIsDarkChanged_DiffIsDarkThemeUpdates()
+    {
+        _theme.IsDark.Returns(false);
+        var sut = Create();
+        sut.Diff.IsDarkTheme.ShouldBeFalse();
+
+        _theme.IsDarkChanged += Raise.Event<Action<bool>>(true);
+
+        sut.Diff.IsDarkTheme.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Dispose_UnsubscribesFromThemeService_SoLaterChangesAreIgnored()
+    {
+        _theme.IsDark.Returns(false);
+        var sut = Create();
+
+        sut.Dispose();
+        _theme.IsDarkChanged += Raise.Event<Action<bool>>(true);
+
+        sut.Diff.IsDarkTheme.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ToggleThemeCommand_CallsThemeServiceToggle()
+    {
+        var sut = Create();
+
+        sut.ToggleThemeCommand.Execute(null);
+
+        _theme.Received(1).Toggle();
     }
 }

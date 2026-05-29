@@ -17,6 +17,7 @@ public class MainWindowViewModelTests
     private readonly ISettingsStore _settings = Substitute.For<ISettingsStore>();
     private readonly IIntraLineDiffer _intra = Substitute.For<IIntraLineDiffer>();
     private readonly IFolderPicker _picker = Substitute.For<IFolderPicker>();
+    private readonly IThemeService _theme = Substitute.For<IThemeService>();
 
     public MainWindowViewModelTests()
     {
@@ -33,7 +34,7 @@ public class MainWindowViewModelTests
         new(
             _git,
             () => new StartViewModel(_picker),
-            () => new ShellViewModel(_git, _intra, _settings, _picker));
+            () => new ShellViewModel(_git, _intra, _settings, _picker, _theme));
 
     [Fact]
     public async Task InitializeAsync_PrintHelp_ShowsStartScreen()
@@ -103,6 +104,21 @@ public class MainWindowViewModelTests
 
         var shell = sut.CurrentContent.ShouldBeOfType<ShellViewModel>();
         shell.RepoRoot.ShouldBe(@"C:\repo");
+    }
+
+    [Fact]
+    public async Task OpeningASecondRepository_DisposesThePreviousShell()
+    {
+        var sut = Create();
+        await sut.OpenRepositoryAsync(@"C:\repo1");
+        var firstShell = sut.CurrentContent.ShouldBeOfType<ShellViewModel>();
+
+        await sut.OpenRepositoryAsync(@"C:\repo2");
+
+        // The replaced shell was disposed, so it no longer reacts to theme changes.
+        _theme.IsDarkChanged += Raise.Event<Action<bool>>(true);
+        firstShell.Diff.IsDarkTheme.ShouldBeFalse();
+        sut.CurrentContent.ShouldNotBeSameAs(firstShell);
     }
 
     [Fact]

@@ -6,6 +6,7 @@ using GitDelta.Core.Diff;
 using GitDelta.Core.Git;
 using GitDelta.Core.Models;
 using GitDelta.Core.Settings;
+using GitDelta.UI.Controls.Diff.Syntax;
 using GitDelta.UI.Services;
 
 namespace GitDelta.UI.ViewModels;
@@ -14,7 +15,7 @@ namespace GitDelta.UI.ViewModels;
 /// The 3-pane workspace: history (left), changed files (middle), diff (right).
 /// Owns the selection-to-DiffSpec recomputation and orchestrates IGitReader.
 /// </summary>
-public partial class ShellViewModel : ObservableObject
+public partial class ShellViewModel : ObservableObject, IDisposable
 {
     private const int HistoryPageSize = 100;
 
@@ -22,21 +23,25 @@ public partial class ShellViewModel : ObservableObject
     private readonly IIntraLineDiffer _intraLineDiffer;
     private readonly ISettingsStore _settings;
     private readonly IFolderPicker _folderPicker;
+    private readonly IThemeService _themeService;
 
     private AppSettings _appSettings;
     private int _historyLoaded;
     private int _busyCount;
+    private bool _disposed;
 
     public ShellViewModel(
         IGitReader gitReader,
         IIntraLineDiffer intraLineDiffer,
         ISettingsStore settings,
-        IFolderPicker folderPicker)
+        IFolderPicker folderPicker,
+        IThemeService themeService)
     {
         _gitReader = gitReader;
         _intraLineDiffer = intraLineDiffer;
         _settings = settings;
         _folderPicker = folderPicker;
+        _themeService = themeService;
         _appSettings = settings.Load();
 
         WorkingTreeRow = new WorkingTreeRowViewModel();
@@ -44,12 +49,39 @@ public partial class ShellViewModel : ObservableObject
         {
             ViewMode = _appSettings.DefaultDiffView,
             TabSize = _appSettings.TabSize,
-            // Phase 7: IsDarkTheme will be set correctly once IThemeService is
-            // injected into ShellViewModel and an IsDarkChanged sync is added so
-            // the diff theme tracks the effective application theme. For now this
-            // is a best-effort initial value derived from persisted settings.
-            IsDarkTheme = _appSettings.Theme == AppTheme.Dark
+            // Track the effective application theme so the diff renderer picks the
+            // matching DarkPlus/LightPlus syntax palette. Updated live below.
+            IsDarkTheme = _themeService.IsDark
         };
+
+        // ShellViewModel is transient; IThemeService is a singleton. Subscribe here
+        // and unsubscribe in Dispose so a replaced shell can never leak via this
+        // event (MainWindowViewModel.DetachCurrentContent disposes the old shell).
+        _themeService.IsDarkChanged += OnThemeIsDarkChanged;
+    }
+
+    private void OnThemeIsDarkChanged(bool isDark)
+    {
+        Diff.IsDarkTheme = isDark;
+    }
+
+    /// <summary>Toggles between light and dark and persists via the theme service.</summary>
+    [RelayCommand]
+    private void ToggleTheme()
+    {
+        _themeService.Toggle();
+    }
+
+    /// <summary>Unsubscribes from the singleton theme service to avoid a leak.</summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _themeService.IsDarkChanged -= OnThemeIsDarkChanged;
     }
 
     [ObservableProperty]
@@ -322,7 +354,7 @@ public partial class ShellViewModel : ObservableObject
             FileDiff enriched = IntraLineEnricher.Enrich(diff, _intraLineDiffer);
 
             Diff.SyntaxLanguageId = _appSettings.SyntaxHighlighting
-                ? LanguageIdFromPath(file.DisplayPath)
+                ? LanguageIdMap.FromPath(file.DisplayPath)
                 : null;
             Diff.FileDiff = enriched;
         }
@@ -364,11 +396,6 @@ public partial class ShellViewModel : ObservableObject
         _historyLoaded += page.Count;
     }
 
-    // Phase 7 will re-add a properly-wired theme command here (injecting
-    // IThemeService and syncing Diff.IsDarkTheme) once the DiffView consumes
-    // IsDarkTheme. The window-level toggle currently routes through
-    // MainWindow.xaml.cs -> IThemeService.Toggle().
-
     [RelayCommand]
     private void OpenSettings()
     {
@@ -385,11 +412,5 @@ public partial class ShellViewModel : ObservableObject
 
         string absolute = Path.Combine(RepoRoot, SelectedFile.DisplayPath);
         EditorRequested?.Invoke(absolute);
-    }
-
-    private static string? LanguageIdFromPath(string path)
-    {
-        string ext = Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
-        return ext.Length == 0 ? null : ext;
     }
 }

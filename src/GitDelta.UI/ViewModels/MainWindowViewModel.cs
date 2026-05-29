@@ -112,6 +112,9 @@ public partial class MainWindowViewModel : ObservableObject
         if (_currentShell is not null)
         {
             _currentShell.RepositoryOpenRequested -= OnShellRepositoryOpenRequested;
+            // ShellViewModel subscribes to the singleton IThemeService; disposing it
+            // unsubscribes so the replaced shell cannot leak via that event.
+            _currentShell.Dispose();
             _currentShell = null;
         }
     }
