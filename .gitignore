@@ -23,8 +23,9 @@ project.lock.json
 *.nupkg
 *.snupkg
 
-# Installer build output
+# Installer build output and bundled runtime (fetched by installer/fetch-runtime.ps1, never committed)
 installer/Output/
+installer/runtime/*.exe
 *.iss.bak
 
 # Logs & local files
