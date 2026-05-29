@@ -32,7 +32,6 @@ public class MainWindowViewModelTests
     private MainWindowViewModel Create() =>
         new(
             _git,
-            _settings,
             () => new StartViewModel(_picker),
             () => new ShellViewModel(_git, _intra, _settings, _picker));
 

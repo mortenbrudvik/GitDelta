@@ -100,6 +100,7 @@ public class ShellViewModelTests
         await sut.LoadRepositoryAsync(@"C:\repo", CancellationToken.None);
 
         sut.IsRepoLoaded.ShouldBeFalse();
+        sut.IsBusy.ShouldBeFalse();
         sut.StatusMessage.ShouldNotBeNullOrWhiteSpace();
         await _git.DidNotReceive().GetHistoryAsync(
             Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
@@ -228,8 +229,10 @@ public class ShellViewModelTests
         var sut = Create();
         await sut.LoadRepositoryAsync(@"C:\repo", CancellationToken.None);
 
-        await sut.ShowFileDiffAsync(new FileRowViewModel(changed), CancellationToken.None);
+        var fileRow = new FileRowViewModel(changed);
+        await sut.ShowFileDiffAsync(fileRow, CancellationToken.None);
 
+        sut.SelectedFile.ShouldBeSameAs(fileRow);
         sut.Diff.FileDiff.ShouldNotBeNull();
         sut.Diff.FileDiff!.File.Path.ShouldBe("a.cs");
         await _git.Received().GetFileDiffAsync(@"C:\repo", Arg.Any<DiffSpec>(), "a.cs",

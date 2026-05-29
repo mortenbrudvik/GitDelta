@@ -25,6 +25,7 @@ public partial class ShellViewModel : ObservableObject
 
     private AppSettings _appSettings;
     private int _historyLoaded;
+    private int _busyCount;
 
     public ShellViewModel(
         IGitReader gitReader,
@@ -78,8 +79,7 @@ public partial class ShellViewModel : ObservableObject
     /// </summary>
     public async Task LoadRepositoryAsync(string repoRoot, CancellationToken ct)
     {
-        IsBusy = true;
-        try
+        using (BeginBusy())
         {
             GitAvailability availability = await _gitReader.CheckGitAsync(ct);
             if (!availability.IsInstalled)
@@ -118,9 +118,45 @@ public partial class ShellViewModel : ObservableObject
 
             await SelectWorkingTreeAsync(ct);
         }
-        finally
+    }
+
+    /// <summary>
+    /// Marks the view-model busy for the lifetime of the returned token.
+    /// Uses a re-entrant counter so nested operations keep <see cref="IsBusy"/>
+    /// true until the outermost one completes, and is robust to exceptions
+    /// (the counter is decremented on dispose).
+    /// </summary>
+    private IDisposable BeginBusy()
+    {
+        if (++_busyCount == 1)
+        {
+            IsBusy = true;
+        }
+
+        return new BusyScope(this);
+    }
+
+    private void EndBusy()
+    {
+        if (--_busyCount == 0)
         {
             IsBusy = false;
+        }
+    }
+
+    private sealed class BusyScope(ShellViewModel owner) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            owner.EndBusy();
         }
     }
 
@@ -183,8 +219,7 @@ public partial class ShellViewModel : ObservableObject
             return;
         }
 
-        IsBusy = true;
-        try
+        using (BeginBusy())
         {
             IReadOnlyList<ChangedFile> files =
                 await _gitReader.GetChangedFilesAsync(RepoRoot, spec, ct);
@@ -197,10 +232,6 @@ public partial class ShellViewModel : ObservableObject
 
             SelectedFile = null;
             Diff.FileDiff = null;
-        }
-        finally
-        {
-            IsBusy = false;
         }
     }
 
@@ -276,8 +307,7 @@ public partial class ShellViewModel : ObservableObject
         }
 
         SelectedFile = file;
-        IsBusy = true;
-        try
+        using (BeginBusy())
         {
             FileDiff diff = await _gitReader.GetFileDiffAsync(
                 RepoRoot, spec, file.DisplayPath, _appSettings.ContextLines, ct);
@@ -288,10 +318,6 @@ public partial class ShellViewModel : ObservableObject
                 ? LanguageIdFromPath(file.DisplayPath)
                 : null;
             Diff.FileDiff = enriched;
-        }
-        finally
-        {
-            IsBusy = false;
         }
     }
 

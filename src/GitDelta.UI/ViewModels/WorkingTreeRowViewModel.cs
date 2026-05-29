@@ -11,7 +11,8 @@ public partial class WorkingTreeRowViewModel : ObservableObject
     [ObservableProperty]
     private bool _isSelected;
 
-    public bool HasChanges { get; set; }
+    [ObservableProperty]
+    private bool _hasChanges;
 
     public string Summary => "Uncommitted changes";
 }

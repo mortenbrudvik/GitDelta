@@ -53,4 +53,20 @@ public class WorkingTreeRowViewModelTests
 
         raised.ShouldBeTrue();
     }
+
+    [Fact]
+    public void HasChanges_RaisesPropertyChanged()
+    {
+        var vm = new WorkingTreeRowViewModel();
+        var raised = false;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WorkingTreeRowViewModel.HasChanges))
+                raised = true;
+        };
+
+        vm.HasChanges = true;
+
+        raised.ShouldBeTrue();
+    }
 }
