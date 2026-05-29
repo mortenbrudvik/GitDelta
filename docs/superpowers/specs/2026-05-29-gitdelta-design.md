@@ -75,7 +75,7 @@ Below the title bar, a three-pane workspace separated by draggable `GridSplitter
 - **Right — Diff view:**
   - **Side-by-side by default**; toggle to unified (choice persisted).
   - Syntax highlighting + intra-line (word-level) highlighting + change bars + line numbers.
-  - Diff toolbar: split/unified · search-in-diff · next/prev change · word-wrap toggle · show-whitespace toggle · copy · open file in default editor.
+  - Diff toolbar: split/unified · search-in-diff · next/prev change · word-wrap toggle · show-whitespace toggle · copy · open file in external editor (uses the configured external-editor command; falls back to the OS default handler).
   - Header: file path, old→new on rename, status.
 
 **Empty/selection states** for: no comparison selected, no changes in selection, binary/large file.
