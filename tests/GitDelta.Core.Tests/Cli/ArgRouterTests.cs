@@ -75,6 +75,7 @@ public class ArgRouterTests
         var action = ArgRouter.Route(new[] { "--version", "--help" }, Cwd);
 
         action.Kind.ShouldBe(LaunchActionKind.PrintHelp);
+        action.RepoPath.ShouldBeNull();
     }
 
     [Fact]

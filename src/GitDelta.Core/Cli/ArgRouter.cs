@@ -13,8 +13,8 @@ namespace GitDelta.Core.Cli;
 /// </remarks>
 public static class ArgRouter
 {
-    private static readonly string[] HelpFlags = { "--help", "-h", "-?" };
-    private static readonly string[] VersionFlags = { "--version", "-v" };
+    private static readonly string[] HelpFlags = ["--help", "-h", "-?"];
+    private static readonly string[] VersionFlags = ["--version", "-v"];
 
     /// <summary>
     /// Decides the launch action from raw command-line <paramref name="args"/>
