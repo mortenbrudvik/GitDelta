@@ -7,6 +7,6 @@ namespace GitDelta.Core.Settings;
 /// </summary>
 public interface ISettingsStore
 {
-    Task<AppSettings> LoadAsync(CancellationToken ct = default);
-    Task SaveAsync(AppSettings settings, CancellationToken ct = default);
+    AppSettings Load();
+    void Save(AppSettings settings);
 }

@@ -93,10 +93,7 @@ public sealed partial class CliGitReader : IGitReader
     public async Task<IReadOnlyList<ChangedFile>> GetChangedFilesAsync(
         string repoRoot, DiffSpec spec, CancellationToken ct)
     {
-        bool isRoot = spec is DiffSpec.CommitVsParent c
-            && await IsRootCommitAsync(repoRoot, c.Sha, ct).ConfigureAwait(false);
-
-        IReadOnlyList<string> refs = DiffSpecArgs.ToDiffArgs(spec, isRoot);
+        IReadOnlyList<string> refs = await ResolveRefsAsync(repoRoot, spec, ct).ConfigureAwait(false);
 
         var numstatArgs = new List<string> { "diff", "--numstat", "-z" };
         numstatArgs.AddRange(refs);
@@ -131,6 +128,19 @@ public sealed partial class CliGitReader : IGitReader
         return ChangedFileMerge.Merge(numstat, nameStatus, extra);
     }
 
+    /// <summary>
+    /// Resolves the ordered git ref arguments for a spec, performing root-commit detection
+    /// (a single 'rev-list' probe) at most once. Shared by GetChangedFilesAsync and GetFileDiffAsync.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> ResolveRefsAsync(
+        string repoRoot, DiffSpec spec, CancellationToken ct)
+    {
+        bool isRoot = spec is DiffSpec.CommitVsParent c
+            && await IsRootCommitAsync(repoRoot, c.Sha, ct).ConfigureAwait(false);
+
+        return DiffSpecArgs.ToDiffArgs(spec, isRoot);
+    }
+
     private async Task<bool> IsRootCommitAsync(string repoRoot, string sha, CancellationToken ct)
     {
         // 'rev-list --count <sha>^' fails when the commit has no parent (i.e. it is a root commit).
@@ -144,17 +154,13 @@ public sealed partial class CliGitReader : IGitReader
     public async Task<FileDiff> GetFileDiffAsync(
         string repoRoot, DiffSpec spec, string path, int contextLines, CancellationToken ct)
     {
-        bool isRoot = spec is DiffSpec.CommitVsParent c
-            && await IsRootCommitAsync(repoRoot, c.Sha, ct).ConfigureAwait(false);
+        // Resolve refs once (single rev-list probe at most); reused for metadata and the diff.
+        IReadOnlyList<string> refs = await ResolveRefsAsync(repoRoot, spec, ct).ConfigureAwait(false);
 
-        IReadOnlyList<string> refs = DiffSpecArgs.ToDiffArgs(spec, isRoot);
-
-        // Resolve the ChangedFile metadata (Kind/counts/binary) for this path.
-        IReadOnlyList<ChangedFile> changed =
-            await GetChangedFilesAsync(repoRoot, spec, ct).ConfigureAwait(false);
-        ChangedFile file = changed.FirstOrDefault(f => f.Path == path)
-            ?? new ChangedFile(path, OldPath: null, ChangeKind.Modified,
-                               AddedLines: null, DeletedLines: null, IsBinary: false);
+        // Resolve this single file's metadata (Kind/counts/binary) with path-scoped numstat +
+        // name-status, instead of re-running the full changed-files pipeline (which would repeat
+        // root detection and the working-tree status probe).
+        ChangedFile file = await GetFileMetadataAsync(repoRoot, refs, path, ct).ConfigureAwait(false);
 
         var diffArgs = new List<string> { "diff", "-U" + contextLines.ToString(CultureInfo.InvariantCulture), "-M", "-C" };
         diffArgs.AddRange(refs);
@@ -186,6 +192,42 @@ public sealed partial class CliGitReader : IGitReader
 
         var diff = new FileDiff(file, hunks, IsBinary: false, IsTruncated: false);
         return IntraLineEnricher.Enrich(diff, _intraLineDiffer);
+    }
+
+    /// <summary>
+    /// Resolves a single file's <see cref="ChangedFile"/> metadata (Kind/counts/binary) using
+    /// path-scoped numstat + name-status. Falls back to a synthesized Modified entry when the
+    /// path is absent from the diff output.
+    /// </summary>
+    private async Task<ChangedFile> GetFileMetadataAsync(
+        string repoRoot, IReadOnlyList<string> refs, string path, CancellationToken ct)
+    {
+        var numstatArgs = new List<string> { "diff", "--numstat", "-z" };
+        numstatArgs.AddRange(refs);
+        numstatArgs.Add("--");
+        numstatArgs.Add(path);
+
+        var nameStatusArgs = new List<string> { "diff", "--name-status", "-z", "-M", "-C" };
+        nameStatusArgs.AddRange(refs);
+        nameStatusArgs.Add("--");
+        nameStatusArgs.Add(path);
+
+        GitResult numstatResult = await _runner.RunAsync(repoRoot, numstatArgs, ct).ConfigureAwait(false);
+        GitResult nameStatusResult = await _runner.RunAsync(repoRoot, nameStatusArgs, ct).ConfigureAwait(false);
+
+        IReadOnlyList<NumstatEntry> numstat = numstatResult.Success
+            ? NumstatParser.Parse(numstatResult.StdOut)
+            : Array.Empty<NumstatEntry>();
+
+        IReadOnlyList<NameStatusEntry> nameStatus = nameStatusResult.Success
+            ? NameStatusParser.Parse(nameStatusResult.StdOut)
+            : Array.Empty<NameStatusEntry>();
+
+        IReadOnlyList<ChangedFile> merged = ChangedFileMerge.Merge(numstat, nameStatus, Array.Empty<ChangedFile>());
+
+        return merged.FirstOrDefault(f => f.Path == path)
+            ?? new ChangedFile(path, OldPath: null, ChangeKind.Modified,
+                               AddedLines: null, DeletedLines: null, IsBinary: false);
     }
 
     [GeneratedRegex(@"git version (?<v>(?<major>\d+)\.(?<minor>\d+)\S*)", RegexOptions.CultureInvariant)]

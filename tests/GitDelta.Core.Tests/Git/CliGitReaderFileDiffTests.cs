@@ -160,4 +160,49 @@ public class CliGitReaderFileDiffTests
         diff.File.Path.ShouldBe("app.cs");
         diff.File.Kind.ShouldBe(ChangeKind.Modified);
     }
+
+    [Fact]
+    public async Task GetFileDiffAsync_CommitVsParent_ProbesRootExactlyOnce()
+    {
+        // A CommitVsParent spec triggers one rev-list root probe. The refactor must resolve
+        // refs a single time (no duplicate probe from a nested GetChangedFilesAsync call).
+        int revListCalls = 0;
+        string numstat = "1\t1\tapp.cs" + NUL;
+        string nameStatus = "M" + NUL + "app.cs" + NUL;
+        Route(args =>
+        {
+            if (args.Contains("rev-list")) { revListCalls++; return Ok("1\n"); }
+            if (args.Contains("--numstat")) return Ok(numstat);
+            if (args.Contains("--name-status")) return Ok(nameStatus);
+            return Ok(TextualDiff);
+        });
+
+        await _sut.GetFileDiffAsync(
+            "C:/repo", new DiffSpec.CommitVsParent("childSha"), "app.cs", contextLines: 3, CancellationToken.None);
+
+        revListCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GetFileDiffAsync_DoesNotRunWorkingTreeStatusProbe()
+    {
+        // The per-file path must never invoke 'git status' (that probe belongs only to the
+        // full working-tree changed-files pipeline, which GetFileDiffAsync no longer calls).
+        bool statusCalled = false;
+        string numstat = "1\t1\tapp.cs" + NUL;
+        string nameStatus = "M" + NUL + "app.cs" + NUL;
+        Route(args =>
+        {
+            if (args.Contains("status")) { statusCalled = true; return Ok(string.Empty); }
+            if (args.Contains("rev-list")) return Ok("1\n");
+            if (args.Contains("--numstat")) return Ok(numstat);
+            if (args.Contains("--name-status")) return Ok(nameStatus);
+            return Ok(TextualDiff);
+        });
+
+        await _sut.GetFileDiffAsync(
+            "C:/repo", new DiffSpec.WorkingTreeVsHead(), "app.cs", contextLines: 3, CancellationToken.None);
+
+        statusCalled.ShouldBeFalse();
+    }
 }

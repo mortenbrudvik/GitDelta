@@ -9,7 +9,7 @@ namespace GitDelta.Core.Tests.Git;
 
 public class CliGitReaderHistoryTests
 {
-    private const char US = ''; // 0x1f field separator
+    private const char US = '\u001f'; // 0x1f field separator
     private const char NUL = '\0'; // 0x00 record terminator
 
     private readonly IGitProcessRunner _runner = Substitute.For<IGitProcessRunner>();
@@ -63,6 +63,25 @@ public class CliGitReaderHistoryTests
         captured.ShouldContain("--skip=40");
         captured.ShouldContain("--max-count=20");
         captured.ShouldContain(a => a.StartsWith("--pretty=format:%H"));
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_PassesCompletePrettyFormatIncludingParents()
+    {
+        IReadOnlyList<string>? captured = null;
+        _runner.RunAsync(Arg.Any<string>(),
+                         Arg.Do<IReadOnlyList<string>>(a => captured = a),
+                         Arg.Any<CancellationToken>())
+               .Returns(Task.FromResult(new GitResult(0, TwoCommitFixture(), string.Empty)));
+
+        await _sut.GetHistoryAsync("C:/repo", skip: 0, maxCount: 50, CancellationToken.None);
+
+        captured.ShouldNotBeNull();
+        // The full 10-field format must be sent verbatim. %P (parents) is load-bearing:
+        // IsMerge/IsRoot are derived from the parent list, so it must never be dropped.
+        captured!.ShouldContain(
+            "--pretty=format:%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%cn%x1f%ce%x1f%cI%x1f%s%x1f%b");
+        captured.ShouldContain(a => a.Contains("%P"));
     }
 
     [Fact]

@@ -1,24 +1,28 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using GitDelta.Core.Models;
 
 namespace GitDelta.Core.Settings;
 
 /// <summary>
-/// Persists application settings as JSON in the user's local application data folder.
+/// Persists application settings as JSON in the user's roaming application data folder
+/// (%APPDATA%/GitDelta/settings.json). Returns default settings when the file is missing
+/// or corrupt. Enum settings round-trip as strings.
 /// </summary>
 public sealed class JsonSettingsStore : ISettingsStore
 {
     private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "GitDelta",
         "settings.json");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
     };
 
-    public async Task<AppSettings> LoadAsync(CancellationToken ct = default)
+    public AppSettings Load()
     {
         if (!File.Exists(SettingsPath))
         {
@@ -27,9 +31,8 @@ public sealed class JsonSettingsStore : ISettingsStore
 
         try
         {
-            await using var stream = File.OpenRead(SettingsPath);
-            return await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions, ct)
-                   ?? new AppSettings();
+            string json = File.ReadAllText(SettingsPath);
+            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
         }
         catch (JsonException)
         {
@@ -37,7 +40,7 @@ public sealed class JsonSettingsStore : ISettingsStore
         }
     }
 
-    public async Task SaveAsync(AppSettings settings, CancellationToken ct = default)
+    public void Save(AppSettings settings)
     {
         string? dir = Path.GetDirectoryName(SettingsPath);
         if (dir is not null)
@@ -45,7 +48,7 @@ public sealed class JsonSettingsStore : ISettingsStore
             Directory.CreateDirectory(dir);
         }
 
-        await using var stream = File.Create(SettingsPath);
-        await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, ct);
+        string json = JsonSerializer.Serialize(settings, JsonOptions);
+        File.WriteAllText(SettingsPath, json);
     }
 }

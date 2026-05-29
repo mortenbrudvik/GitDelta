@@ -54,8 +54,8 @@ public sealed class GitProcessRunner : IGitProcessRunner
             throw;
         }
 
-        // stdErrTask already completed in the Task.WhenAll above; read its result directly.
-        var stdErr = stdErrTask.Result;
+        // stdErrTask already completed in the Task.WhenAll above; await it (no blocking).
+        var stdErr = await stdErrTask.ConfigureAwait(false);
         return new GitResult(process.ExitCode, stdOutBuffer.ToArray(), stdErr);
     }
 
