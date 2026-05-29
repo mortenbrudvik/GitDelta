@@ -1,0 +1,64 @@
+<UserControl
+    x:Class="GitDelta.UI.Controls.DiffView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:avalon="http://icsharpcode.net/sharpdevelop/avalonedit">
+    <Grid Background="{DynamicResource ApplicationBackgroundBrush}">
+
+        <!--  Side-by-side: two editors  -->
+        <Grid x:Name="SplitRoot">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="1" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <avalon:TextEditor
+                x:Name="LeftEditor"
+                Grid.Column="0"
+                Background="Transparent"
+                FontFamily="Cascadia Mono, Consolas, monospace"
+                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                IsReadOnly="True"
+                ShowLineNumbers="True" />
+            <Border
+                Grid.Column="1"
+                Background="{DynamicResource ControlStrokeColorDefaultBrush}" />
+            <avalon:TextEditor
+                x:Name="RightEditor"
+                Grid.Column="2"
+                Background="Transparent"
+                FontFamily="Cascadia Mono, Consolas, monospace"
+                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                IsReadOnly="True"
+                ShowLineNumbers="True" />
+        </Grid>
+
+        <!--  Unified: single editor (collapsed until ViewMode = Unified)  -->
+        <avalon:TextEditor
+            x:Name="UnifiedEditor"
+            Background="Transparent"
+            FontFamily="Cascadia Mono, Consolas, monospace"
+            Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+            IsReadOnly="True"
+            ShowLineNumbers="True"
+            Visibility="Collapsed" />
+
+        <!--  Empty state  -->
+        <TextBlock
+            x:Name="EmptyState"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+            Text="No file selected"
+            Visibility="Collapsed" />
+
+        <!--  Binary / truncated overlay  -->
+        <TextBlock
+            x:Name="PlaceholderState"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+            TextAlignment="Center"
+            Visibility="Collapsed" />
+    </Grid>
+</UserControl>

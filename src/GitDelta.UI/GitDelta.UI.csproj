@@ -27,4 +27,10 @@
     <ProjectReference Include="..\GitDelta.Core\GitDelta.Core.csproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- AvalonEdit 6.x ships net6.0-windows assemblies; loads forward-compat on net10.
+         Scope-suppress the cross-targeting restore warning only (spec §15 risk). -->
+    <NoWarn>$(NoWarn);NU1701</NoWarn>
+  </PropertyGroup>
+
 </Project>
