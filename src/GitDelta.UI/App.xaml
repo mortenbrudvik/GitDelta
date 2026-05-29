@@ -12,6 +12,8 @@
         <ui:ThemesDictionary Theme="Dark" />
         <ui:ControlsDictionary />
         <ResourceDictionary Source="pack://application:,,,/Resources/ViewLocators.xaml" />
+        <!-- Diff render brushes (after WPF-UI dictionaries so our keys win). -->
+        <ResourceDictionary Source="pack://application:,,,/Resources/DiffBrushes.xaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Application.Resources>

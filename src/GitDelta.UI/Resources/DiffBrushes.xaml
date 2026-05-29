@@ -1,0 +1,19 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--  Full-line backgrounds (semi-transparent so Mica/selection read through)  -->
+    <SolidColorBrush x:Key="DiffAddedLineBrush" Color="#3322C55E" />
+    <SolidColorBrush x:Key="DiffDeletedLineBrush" Color="#33EF4444" />
+    <SolidColorBrush x:Key="DiffModifiedLineBrush" Color="#33F59E0B" />
+    <SolidColorBrush x:Key="DiffFillerLineBrush" Color="#14808080" />
+
+    <!--  Intra-line (word-level) tints, layered over the line background  -->
+    <SolidColorBrush x:Key="DiffAddedSpanBrush" Color="#5522C55E" />
+    <SolidColorBrush x:Key="DiffDeletedSpanBrush" Color="#55EF4444" />
+
+    <!--  Change-bar margin colors (solid)  -->
+    <SolidColorBrush x:Key="DiffAddedBarBrush" Color="#FF22C55E" />
+    <SolidColorBrush x:Key="DiffDeletedBarBrush" Color="#FFEF4444" />
+    <SolidColorBrush x:Key="DiffModifiedBarBrush" Color="#FFF59E0B" />
+</ResourceDictionary>
