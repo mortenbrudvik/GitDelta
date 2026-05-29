@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using GitDelta.UI.ViewModels;
 
 namespace GitDelta.UI.Views;
@@ -73,6 +74,22 @@ public partial class ShellView : UserControl
 
         vm.HistoryPaneWidth = HistoryColumn.Width.Value;
         vm.FilesPaneWidth = FilesColumn.Width.Value;
+    }
+
+    // ── Changed-files grouping toggle ───────────────────────────────────────────
+
+    private void OnGroupByFolderToggled(object sender, RoutedEventArgs e)
+    {
+        if (Resources["GroupedFiles"] is not CollectionViewSource cvs)
+        {
+            return;
+        }
+
+        cvs.GroupDescriptions.Clear();
+        if (GroupByFolderToggle.IsChecked == true)
+        {
+            cvs.GroupDescriptions.Add(new PropertyGroupDescription("Folder"));
+        }
     }
 
     // ── Toolbar click handlers (call DiffView public methods directly) ─────────

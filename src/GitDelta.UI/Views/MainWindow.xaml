@@ -52,6 +52,15 @@
               Click="OnToggleThemeClick"
               Icon="{ui:SymbolIcon WeatherMoon24}"
               ToolTip="Toggle light / dark theme" />
+
+          <ui:Button
+              Margin="8,0,0,0"
+              Padding="8,4"
+              Appearance="Secondary"
+              AutomationProperties.Name="Settings"
+              Command="{Binding CurrentContent.OpenSettingsCommand}"
+              Icon="{ui:SymbolIcon Settings24}"
+              ToolTip="Settings" />
         </StackPanel>
       </ui:TitleBar.Header>
     </ui:TitleBar>

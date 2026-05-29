@@ -10,6 +10,15 @@
     d:DesignWidth="1080"
     mc:Ignorable="d">
 
+  <UserControl.Resources>
+    <!-- Changed-files grouped by folder; flat toggle clears these descriptions in code-behind. -->
+    <CollectionViewSource x:Key="GroupedFiles" Source="{Binding ChangedFiles}">
+      <CollectionViewSource.GroupDescriptions>
+        <PropertyGroupDescription PropertyName="Folder" />
+      </CollectionViewSource.GroupDescriptions>
+    </CollectionViewSource>
+  </UserControl.Resources>
+
   <Grid Background="{DynamicResource ApplicationBackgroundBrush}">
     <Grid.ColumnDefinitions>
       <ColumnDefinition x:Name="HistoryColumn" Width="280" MinWidth="200" />
@@ -123,12 +132,23 @@
         <RowDefinition Height="*" />
       </Grid.RowDefinitions>
 
-      <ui:TextBlock
-          Grid.Row="0"
-          Margin="8,4,0,8"
-          Appearance="Secondary"
-          FontTypography="Caption"
-          Text="CHANGED FILES" />
+      <DockPanel Grid.Row="0" Margin="8,4,2,8">
+        <ui:ToggleSwitch
+            x:Name="GroupByFolderToggle"
+            DockPanel.Dock="Right"
+            VerticalAlignment="Center"
+            AutomationProperties.Name="Group changed files by folder"
+            Checked="OnGroupByFolderToggled"
+            Content="Group by folder"
+            IsChecked="True"
+            ToolTip="Group changed files by folder, or show a flat list"
+            Unchecked="OnGroupByFolderToggled" />
+        <ui:TextBlock
+            VerticalAlignment="Center"
+            Appearance="Secondary"
+            FontTypography="Caption"
+            Text="CHANGED FILES" />
+      </DockPanel>
 
       <Border
           Grid.Row="1"
@@ -137,13 +157,28 @@
           BorderThickness="1"
           CornerRadius="8">
         <ListBox
+            x:Name="ChangedFilesList"
             Margin="2"
             Background="Transparent"
             BorderThickness="0"
-            ItemsSource="{Binding ChangedFiles}"
+            ItemsSource="{Binding Source={StaticResource GroupedFiles}}"
             SelectedItem="{Binding SelectedFile}"
             VirtualizingPanel.IsVirtualizing="True"
             VirtualizingPanel.VirtualizationMode="Recycling">
+          <ListBox.GroupStyle>
+            <GroupStyle>
+              <GroupStyle.HeaderTemplate>
+                <DataTemplate>
+                  <TextBlock
+                      Margin="6,6,0,2"
+                      FontWeight="SemiBold"
+                      Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                      Text="{Binding Name}"
+                      TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </GroupStyle.HeaderTemplate>
+            </GroupStyle>
+          </ListBox.GroupStyle>
           <ListBox.ItemTemplate>
             <DataTemplate>
               <Grid Margin="4,4">
@@ -153,17 +188,43 @@
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <Border
+                <!-- Theme-aware status glyph: Foreground set by ChangeKind via DataTriggers. -->
+                <TextBlock
                     Grid.Column="0"
                     Width="18"
                     Margin="0,0,8,0"
-                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                    CornerRadius="4">
-                  <TextBlock
-                      HorizontalAlignment="Center"
-                      FontWeight="Bold"
-                      Text="{Binding StatusGlyph}" />
-                </Border>
+                    HorizontalAlignment="Center"
+                    FontFamily="Cascadia Mono, Consolas"
+                    FontWeight="Bold"
+                    Text="{Binding StatusGlyph}"
+                    ToolTip="{Binding Kind}">
+                  <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                      <!-- Default (Modified / TypeChanged / unknown): caution color. -->
+                      <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding Kind}" Value="Added">
+                          <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Untracked">
+                          <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Copied">
+                          <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Deleted">
+                          <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Renamed">
+                          <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Kind}" Value="Conflicted">
+                          <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
 
                 <TextBlock
                     Grid.Column="1"
