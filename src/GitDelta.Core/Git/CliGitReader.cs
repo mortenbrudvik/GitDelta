@@ -90,8 +90,56 @@ public sealed partial class CliGitReader : IGitReader
         return GitLogParser.Parse(result.StdOut);
     }
 
-    public Task<IReadOnlyList<ChangedFile>> GetChangedFilesAsync(string repoRoot, DiffSpec spec, CancellationToken ct) =>
-        throw new NotImplementedException();
+    public async Task<IReadOnlyList<ChangedFile>> GetChangedFilesAsync(
+        string repoRoot, DiffSpec spec, CancellationToken ct)
+    {
+        bool isRoot = spec is DiffSpec.CommitVsParent c
+            && await IsRootCommitAsync(repoRoot, c.Sha, ct).ConfigureAwait(false);
+
+        IReadOnlyList<string> refs = DiffSpecArgs.ToDiffArgs(spec, isRoot);
+
+        var numstatArgs = new List<string> { "diff", "--numstat", "-z" };
+        numstatArgs.AddRange(refs);
+
+        var nameStatusArgs = new List<string> { "diff", "--name-status", "-z", "-M", "-C" };
+        nameStatusArgs.AddRange(refs);
+
+        GitResult numstatResult = await _runner.RunAsync(repoRoot, numstatArgs, ct).ConfigureAwait(false);
+        GitResult nameStatusResult = await _runner.RunAsync(repoRoot, nameStatusArgs, ct).ConfigureAwait(false);
+
+        IReadOnlyList<NumstatEntry> numstat = numstatResult.Success
+            ? NumstatParser.Parse(numstatResult.StdOut)
+            : Array.Empty<NumstatEntry>();
+
+        IReadOnlyList<NameStatusEntry> nameStatus = nameStatusResult.Success
+            ? NameStatusParser.Parse(nameStatusResult.StdOut)
+            : Array.Empty<NameStatusEntry>();
+
+        IReadOnlyList<ChangedFile> extra = Array.Empty<ChangedFile>();
+        if (spec is DiffSpec.WorkingTreeVsHead)
+        {
+            GitResult statusResult = await _runner
+                .RunAsync(repoRoot, new[] { "status", "--porcelain=v2", "-z" }, ct)
+                .ConfigureAwait(false);
+
+            if (statusResult.Success)
+            {
+                extra = StatusPorcelainV2Parser.Parse(statusResult.StdOut);
+            }
+        }
+
+        return ChangedFileMerge.Merge(numstat, nameStatus, extra);
+    }
+
+    private async Task<bool> IsRootCommitAsync(string repoRoot, string sha, CancellationToken ct)
+    {
+        // 'rev-list --count <sha>^' fails when the commit has no parent (i.e. it is a root commit).
+        GitResult result = await _runner
+            .RunAsync(repoRoot, new[] { "rev-list", "--count", sha + "^" }, ct)
+            .ConfigureAwait(false);
+
+        return !result.Success;
+    }
 
     public Task<FileDiff> GetFileDiffAsync(string repoRoot, DiffSpec spec, string path, int contextLines, CancellationToken ct) =>
         throw new NotImplementedException();
