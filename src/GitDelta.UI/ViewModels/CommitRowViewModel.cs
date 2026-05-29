@@ -18,7 +18,7 @@ public partial class CommitRowViewModel : ObservableObject
         Author = commit.AuthorName;
         FullDate = commit.AuthorDate.ToLocalTime()
             .ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture);
-        RelativeDate = FormatRelative(commit.AuthorDate);
+        RelativeDate = RelativeTime.Format(commit.AuthorDate);
     }
 
     public CommitInfo Commit { get; }
@@ -32,37 +32,4 @@ public partial class CommitRowViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isSelected;
-
-    private static string FormatRelative(DateTimeOffset when)
-    {
-        TimeSpan delta = DateTimeOffset.Now - when;
-
-        if (delta < TimeSpan.Zero)
-            return "just now";
-        if (delta.TotalSeconds < 60)
-            return "just now";
-        if (delta.TotalMinutes < 60)
-        {
-            int m = (int)delta.TotalMinutes;
-            return m == 1 ? "1 minute ago" : $"{m} minutes ago";
-        }
-        if (delta.TotalHours < 24)
-        {
-            int h = (int)delta.TotalHours;
-            return h == 1 ? "1 hour ago" : $"{h} hours ago";
-        }
-        if (delta.TotalDays < 30)
-        {
-            int d = (int)delta.TotalDays;
-            return d == 1 ? "1 day ago" : $"{d} days ago";
-        }
-        if (delta.TotalDays < 365)
-        {
-            int mo = (int)(delta.TotalDays / 30);
-            return mo == 1 ? "1 month ago" : $"{mo} months ago";
-        }
-
-        int y = (int)(delta.TotalDays / 365);
-        return y == 1 ? "1 year ago" : $"{y} years ago";
-    }
 }
