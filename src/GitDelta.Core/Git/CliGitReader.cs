@@ -141,8 +141,52 @@ public sealed partial class CliGitReader : IGitReader
         return !result.Success;
     }
 
-    public Task<FileDiff> GetFileDiffAsync(string repoRoot, DiffSpec spec, string path, int contextLines, CancellationToken ct) =>
-        throw new NotImplementedException();
+    public async Task<FileDiff> GetFileDiffAsync(
+        string repoRoot, DiffSpec spec, string path, int contextLines, CancellationToken ct)
+    {
+        bool isRoot = spec is DiffSpec.CommitVsParent c
+            && await IsRootCommitAsync(repoRoot, c.Sha, ct).ConfigureAwait(false);
+
+        IReadOnlyList<string> refs = DiffSpecArgs.ToDiffArgs(spec, isRoot);
+
+        // Resolve the ChangedFile metadata (Kind/counts/binary) for this path.
+        IReadOnlyList<ChangedFile> changed =
+            await GetChangedFilesAsync(repoRoot, spec, ct).ConfigureAwait(false);
+        ChangedFile file = changed.FirstOrDefault(f => f.Path == path)
+            ?? new ChangedFile(path, OldPath: null, ChangeKind.Modified,
+                               AddedLines: null, DeletedLines: null, IsBinary: false);
+
+        var diffArgs = new List<string> { "diff", "-U" + contextLines.ToString(CultureInfo.InvariantCulture), "-M", "-C" };
+        diffArgs.AddRange(refs);
+        diffArgs.Add("--");
+        diffArgs.Add(path);
+
+        GitResult result = await _runner.RunAsync(repoRoot, diffArgs, ct).ConfigureAwait(false);
+        string diffText = result.Success ? Encoding.UTF8.GetString(result.StdOut) : string.Empty;
+
+        // Binary: git emits a "Binary files ... differ" line and no hunks.
+        if (file.IsBinary || diffText.Contains("Binary files ", StringComparison.Ordinal))
+        {
+            return new FileDiff(file with { IsBinary = true }, Array.Empty<DiffHunk>(),
+                                IsBinary: true, IsTruncated: false);
+        }
+
+        IReadOnlyList<DiffHunk> hunks = UnifiedDiffParser.Parse(diffText);
+
+        int totalLines = 0;
+        foreach (DiffHunk h in hunks)
+        {
+            totalLines += h.Lines.Count;
+        }
+
+        if (totalLines > LargeFileHunkLineThreshold)
+        {
+            return new FileDiff(file, Array.Empty<DiffHunk>(), IsBinary: false, IsTruncated: true);
+        }
+
+        var diff = new FileDiff(file, hunks, IsBinary: false, IsTruncated: false);
+        return IntraLineEnricher.Enrich(diff, _intraLineDiffer);
+    }
 
     [GeneratedRegex(@"git version (?<v>(?<major>\d+)\.(?<minor>\d+)\S*)", RegexOptions.CultureInvariant)]
     private static partial Regex GitVersionRegex();
