@@ -1,7 +1,6 @@
 using GitDelta.Core.Git;
 using GitDelta.Core.Models;
 using GitDelta.Core.Settings;
-using GitDelta.Core.Diff;
 using GitDelta.UI.Services;
 using GitDelta.UI.ViewModels;
 using NSubstitute;
@@ -13,7 +12,6 @@ namespace GitDelta.UI.UnitTests.ViewModels;
 public class ShellViewModelTests
 {
     private readonly IGitReader _git = Substitute.For<IGitReader>();
-    private readonly IIntraLineDiffer _intra = Substitute.For<IIntraLineDiffer>();
     private readonly ISettingsStore _settings = Substitute.For<ISettingsStore>();
     private readonly IFolderPicker _picker = Substitute.For<IFolderPicker>();
     private readonly IThemeService _theme = Substitute.For<IThemeService>();
@@ -30,7 +28,7 @@ public class ShellViewModelTests
     }
 
     private ShellViewModel Create() =>
-        new(_git, _intra, _settings, _picker, _theme);
+        new(_git, _settings, _picker, _theme);
 
     private static CommitInfo Commit(string sha, params string[] parents) =>
         new(sha, sha[..Math.Min(7, sha.Length)], parents,
@@ -192,6 +190,39 @@ public class ShellViewModelTests
     }
 
     [Fact]
+    public async Task SelectingMoreThanTwoCommits_DiffsTheExtremesOldestToNewest()
+    {
+        // The history ListView's multi-select can populate SelectedCommits with more than
+        // two commits; the range should diff the oldest (base) vs newest (target).
+        _git.GetHistoryAsync(Arg.Any<string>(), Arg.Is<int>(n => n == 0), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Commit("newest1", "second2"),
+                Commit("second2", "third33"),
+                Commit("third33", "oldest4"),
+                Commit("oldest4")
+            });
+        var sut = Create();
+        await sut.LoadRepositoryAsync(@"C:\repo", CancellationToken.None);
+
+        // Multi-select indices 0 (newest), 2, 3 (oldest) — added directly as the code-behind
+        // bridge does, then drive the recompute.
+        sut.SelectedCommits.Add(sut.History[0]); // newest1
+        sut.SelectedCommits.Add(sut.History[2]); // third33
+        sut.SelectedCommits.Add(sut.History[3]); // oldest4
+        sut.OnHistorySelectionChanged();
+
+        var calls = _git.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IGitReader.GetChangedFilesAsync))
+            .ToList();
+        calls.ShouldNotBeEmpty();
+        var spec = (DiffSpec)calls.Last().GetArguments()[1]!;
+        var tc = spec.ShouldBeOfType<DiffSpec.TwoCommits>();
+        tc.BaseSha.ShouldBe("oldest4");   // highest History index = oldest = base
+        tc.TargetSha.ShouldBe("newest1"); // lowest History index = newest = target
+    }
+
+    [Fact]
     public async Task SetComparisonAsync_PopulatesChangedFiles()
     {
         _git.GetChangedFilesAsync(@"C:\repo",
@@ -212,8 +243,10 @@ public class ShellViewModelTests
     }
 
     [Fact]
-    public async Task ShowFileDiffAsync_LoadsAndEnrichesFileDiffIntoDiffDocument()
+    public async Task ShowFileDiffAsync_PushesReaderFileDiffIntoDiffDocument()
     {
+        // IGitReader.GetFileDiffAsync already returns an enriched FileDiff; the shell
+        // pushes it through as-is (no second enrichment pass).
         var changed = new ChangedFile("a.cs", null, ChangeKind.Modified, 1, 1, false);
         var hunk = new DiffHunk(1, 1, 1, 1, "@@ -1 +1 @@", new[]
         {
@@ -224,9 +257,6 @@ public class ShellViewModelTests
         _git.GetFileDiffAsync(@"C:\repo", Arg.Any<DiffSpec>(), "a.cs",
                 Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(fileDiff);
-        _intra.Compute(Arg.Any<string>(), Arg.Any<string>())
-            .Returns((new IntraSpan[] { new(0, 3, IntraSpanKind.Deleted) },
-                      new IntraSpan[] { new(0, 3, IntraSpanKind.Added) }));
         var sut = Create();
         await sut.LoadRepositoryAsync(@"C:\repo", CancellationToken.None);
 
@@ -234,7 +264,7 @@ public class ShellViewModelTests
         await sut.ShowFileDiffAsync(fileRow, CancellationToken.None);
 
         sut.SelectedFile.ShouldBeSameAs(fileRow);
-        sut.Diff.FileDiff.ShouldNotBeNull();
+        sut.Diff.FileDiff.ShouldBeSameAs(fileDiff);
         sut.Diff.FileDiff!.File.Path.ShouldBe("a.cs");
         await _git.Received().GetFileDiffAsync(@"C:\repo", Arg.Any<DiffSpec>(), "a.cs",
             Arg.Any<int>(), Arg.Any<CancellationToken>());

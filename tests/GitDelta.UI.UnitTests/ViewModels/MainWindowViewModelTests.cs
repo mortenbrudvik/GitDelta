@@ -1,5 +1,4 @@
 using GitDelta.Core.Cli;
-using GitDelta.Core.Diff;
 using GitDelta.Core.Git;
 using GitDelta.Core.Models;
 using GitDelta.Core.Settings;
@@ -15,7 +14,6 @@ public class MainWindowViewModelTests
 {
     private readonly IGitReader _git = Substitute.For<IGitReader>();
     private readonly ISettingsStore _settings = Substitute.For<ISettingsStore>();
-    private readonly IIntraLineDiffer _intra = Substitute.For<IIntraLineDiffer>();
     private readonly IFolderPicker _picker = Substitute.For<IFolderPicker>();
     private readonly IThemeService _theme = Substitute.For<IThemeService>();
 
@@ -34,7 +32,7 @@ public class MainWindowViewModelTests
         new(
             _git,
             () => new StartViewModel(_picker),
-            () => new ShellViewModel(_git, _intra, _settings, _picker, _theme));
+            () => new ShellViewModel(_git, _settings, _picker, _theme));
 
     [Fact]
     public async Task InitializeAsync_PrintHelp_ShowsStartScreen()

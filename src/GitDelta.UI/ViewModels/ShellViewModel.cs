@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using GitDelta.Core.Diff;
 using GitDelta.Core.Git;
 using GitDelta.Core.Models;
 using GitDelta.Core.Settings;
@@ -20,7 +19,6 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     private const int HistoryPageSize = 100;
 
     private readonly IGitReader _gitReader;
-    private readonly IIntraLineDiffer _intraLineDiffer;
     private readonly ISettingsStore _settings;
     private readonly IFolderPicker _folderPicker;
     private readonly IThemeService _themeService;
@@ -32,13 +30,11 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     public ShellViewModel(
         IGitReader gitReader,
-        IIntraLineDiffer intraLineDiffer,
         ISettingsStore settings,
         IFolderPicker folderPicker,
         IThemeService themeService)
     {
         _gitReader = gitReader;
-        _intraLineDiffer = intraLineDiffer;
         _settings = settings;
         _folderPicker = folderPicker;
         _themeService = themeService;
@@ -323,8 +319,10 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Maps the current selection to a DiffSpec:
     /// working tree => WorkingTreeVsHead; one commit => CommitVsParent;
-    /// two commits => TwoCommits(older, newer). History is newest-first,
-    /// so the higher index is the older (base) commit.
+    /// two or more commits => TwoCommits over the extremes of the selection.
+    /// History is newest-first, so the higher index is the older (base) commit;
+    /// for a range selection (>2) we diff the oldest selected (base) against the
+    /// newest selected (target) so the user sees a meaningful diff, not a blank.
     /// </summary>
     private DiffSpec? BuildSpecFromSelection()
     {
@@ -338,16 +336,32 @@ public partial class ShellViewModel : ObservableObject, IDisposable
             return new DiffSpec.CommitVsParent(SelectedCommits[0].Sha);
         }
 
-        if (SelectedCommits.Count == 2)
+        if (SelectedCommits.Count >= 2)
         {
-            int indexA = History.IndexOf(SelectedCommits[0]);
-            int indexB = History.IndexOf(SelectedCommits[1]);
+            // Find the extremes by History index: largest index = oldest = base,
+            // smallest index = newest = target.
+            CommitRowViewModel oldest = SelectedCommits[0];
+            CommitRowViewModel newest = SelectedCommits[0];
+            int oldestIndex = History.IndexOf(oldest);
+            int newestIndex = oldestIndex;
 
-            // Larger index = older = base; smaller index = newer = target.
-            CommitRowViewModel older = indexA >= indexB ? SelectedCommits[0] : SelectedCommits[1];
-            CommitRowViewModel newer = indexA >= indexB ? SelectedCommits[1] : SelectedCommits[0];
+            foreach (CommitRowViewModel commit in SelectedCommits)
+            {
+                int index = History.IndexOf(commit);
+                if (index > oldestIndex)
+                {
+                    oldest = commit;
+                    oldestIndex = index;
+                }
 
-            return new DiffSpec.TwoCommits(older.Sha, newer.Sha);
+                if (index < newestIndex)
+                {
+                    newest = commit;
+                    newestIndex = index;
+                }
+            }
+
+            return new DiffSpec.TwoCommits(oldest.Sha, newest.Sha);
         }
 
         return null;
@@ -380,8 +394,9 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     public event Action<string>? EditorRequested;
 
     /// <summary>
-    /// Loads the per-file diff for the current comparison, enriches it with
-    /// intra-line spans, and pushes it into the diff document.
+    /// Loads the per-file diff for the current comparison (already enriched with
+    /// intra-line spans by <see cref="IGitReader.GetFileDiffAsync"/>) and pushes it
+    /// into the diff document.
     /// </summary>
     public async Task ShowFileDiffAsync(FileRowViewModel file, CancellationToken ct)
     {
@@ -402,12 +417,10 @@ public partial class ShellViewModel : ObservableObject, IDisposable
             FileDiff diff = await _gitReader.GetFileDiffAsync(
                 RepoRoot, spec, file.DisplayPath, _appSettings.ContextLines, ct);
 
-            FileDiff enriched = IntraLineEnricher.Enrich(diff, _intraLineDiffer);
-
             Diff.SyntaxLanguageId = _appSettings.SyntaxHighlighting
                 ? LanguageIdMap.FromPath(file.DisplayPath)
                 : null;
-            Diff.FileDiff = enriched;
+            Diff.FileDiff = diff;
         }
     }
 

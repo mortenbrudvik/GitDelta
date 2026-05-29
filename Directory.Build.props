@@ -10,5 +10,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
+    <!-- Embed PDBs into each assembly solution-wide so a single-file publish ships
+         only gitdelta.exe (no loose GitDelta.Core.pdb beside it). -->
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
 </Project>
