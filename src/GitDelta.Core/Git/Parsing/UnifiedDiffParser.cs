@@ -32,12 +32,20 @@ public static class UnifiedDiffParser
         {
             if (raw.StartsWith("@@", StringComparison.Ordinal))
             {
+                var parsed = ParseHunkHeader(raw);
+                if (parsed is null)
+                {
+                    // Malformed header (missing ranges/second '@@') — skip it without
+                    // disturbing the current hunk's accumulated lines.
+                    continue;
+                }
+
                 if (current is not null)
                 {
                     hunks.Add(new DiffHunk(oldStart, oldCount, newStart, newCount, header, current));
                 }
 
-                (oldStart, oldCount, newStart, newCount) = ParseHunkHeader(raw);
+                (oldStart, oldCount, newStart, newCount) = parsed.Value;
                 header = raw;
                 oldLine = oldStart;
                 newLine = newStart;
@@ -96,14 +104,26 @@ public static class UnifiedDiffParser
         return hunks;
     }
 
-    private static (int OldStart, int OldCount, int NewStart, int NewCount) ParseHunkHeader(string header)
+    private static (int OldStart, int OldCount, int NewStart, int NewCount)? ParseHunkHeader(string header)
     {
         // Format: "@@ -oldStart[,oldCount] +newStart[,newCount] @@[ heading]"
         var firstAt = header.IndexOf("@@", StringComparison.Ordinal);
         var secondAt = header.IndexOf("@@", firstAt + 2, StringComparison.Ordinal);
+        if (secondAt < 0)
+        {
+            // Malformed: no closing "@@" — cannot locate the range section.
+            return null;
+        }
+
         var ranges = header[(firstAt + 2)..secondAt].Trim();
 
         var parts = ranges.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+        {
+            // Malformed: missing the '-' or '+' range token.
+            return null;
+        }
+
         var (oldStart, oldCount) = ParseRange(parts[0]); // leading '-'
         var (newStart, newCount) = ParseRange(parts[1]); // leading '+'
         return (oldStart, oldCount, newStart, newCount);
