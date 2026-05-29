@@ -3,7 +3,9 @@ using GitDelta.Core.Models;
 using GitDelta.Core.Settings;
 using GitDelta.UI.Services;
 using GitDelta.UI.ViewModels;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Shouldly;
 using Xunit;
 
@@ -15,6 +17,7 @@ public class ShellViewModelTests
     private readonly ISettingsStore _settings = Substitute.For<ISettingsStore>();
     private readonly IFolderPicker _picker = Substitute.For<IFolderPicker>();
     private readonly IThemeService _theme = Substitute.For<IThemeService>();
+    private readonly IExternalEditorLauncher _editorLauncher = Substitute.For<IExternalEditorLauncher>();
 
     public ShellViewModelTests()
     {
@@ -28,7 +31,7 @@ public class ShellViewModelTests
     }
 
     private ShellViewModel Create() =>
-        new(_git, _settings, _picker, _theme);
+        new(_git, _settings, _picker, _theme, _editorLauncher, NullLogger<ShellViewModel>.Instance);
 
     private static CommitInfo Commit(string sha, params string[] parents) =>
         new(sha, sha[..Math.Min(7, sha.Length)], parents,
@@ -271,6 +274,82 @@ public class ShellViewModelTests
     }
 
     [Fact]
+    public async Task LoadRepositoryAsync_WhenHistoryLoadFails_SurfacesErrorAndClearsBusy()
+    {
+        // A failed 'git log' must not leave a blank workspace with no explanation.
+        _git.GetHistoryAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new GitCommandException("log", 128, "fatal: bad revision"));
+        var sut = Create();
+
+        await sut.LoadRepositoryAsync(@"C:\repo", CancellationToken.None);
+
+        sut.StatusMessage.ShouldNotBeNull().ShouldContain("fatal: bad revision");
+        sut.HasStatusMessage.ShouldBeTrue();
+        sut.IsBusy.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task RefreshCommand_WhenGitCommandFails_SurfacesErrorInStatusMessage()
+    {
+        var sut = Create();
+        await sut.LoadRepositoryAsync(@"C:\repo", CancellationToken.None);
+        _git.GetChangedFilesAsync(Arg.Any<string>(), Arg.Any<DiffSpec>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new GitCommandException("diff --numstat", 128, "fatal: dubious ownership"));
+
+        await sut.RefreshCommand.ExecuteAsync(null);
+
+        sut.StatusMessage.ShouldNotBeNull().ShouldContain("dubious ownership");
+        sut.IsBusy.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ChangingSelectedFile_CancelsThePreviousFileDiffLoad()
+    {
+        // Rapid file switching must cancel the in-flight load so a slower earlier read cannot
+        // overwrite the diff for the file the user is now looking at.
+        var sut = Create();
+        await sut.LoadRepositoryAsync(@"C:\repo", CancellationToken.None);
+
+        var tokens = new List<CancellationToken>();
+        var gate = new TaskCompletionSource<FileDiff>();
+        _git.GetFileDiffAsync(Arg.Any<string>(), Arg.Any<DiffSpec>(), Arg.Any<string>(),
+                Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                tokens.Add(ci.ArgAt<CancellationToken>(4));
+                return gate.Task; // never completes: keeps the load "in flight"
+            });
+
+        sut.SelectedFile = new FileRowViewModel(new ChangedFile("a.cs", null, ChangeKind.Modified, 1, 0, false));
+        sut.SelectedFile = new FileRowViewModel(new ChangedFile("b.cs", null, ChangeKind.Modified, 1, 0, false));
+
+        tokens.Count.ShouldBe(2);
+        tokens[0].IsCancellationRequested.ShouldBeTrue();  // first (superseded) load was cancelled
+        tokens[1].IsCancellationRequested.ShouldBeFalse(); // current load is live
+    }
+
+    [Fact]
+    public void Dispose_CancelsInFlightFileDiffLoad()
+    {
+        var sut = Create();
+
+        CancellationToken captured = default;
+        var gate = new TaskCompletionSource<FileDiff>();
+        _git.GetFileDiffAsync(Arg.Any<string>(), Arg.Any<DiffSpec>(), Arg.Any<string>(),
+                Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => { captured = ci.ArgAt<CancellationToken>(4); return gate.Task; });
+
+        // Drive a load without the early RepoRoot guard returning: load a repo first.
+        sut.RepoRoot = @"C:\repo";
+        sut.WorkingTreeRow.IsSelected = true;
+        sut.SelectedFile = new FileRowViewModel(new ChangedFile("a.cs", null, ChangeKind.Modified, 1, 0, false));
+
+        sut.Dispose();
+
+        captured.IsCancellationRequested.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task LoadMoreHistoryCommand_AppendsNextPage()
     {
         _git.GetHistoryAsync(Arg.Any<string>(), Arg.Is<int>(n => n == 0), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -340,30 +419,41 @@ public class ShellViewModelTests
     }
 
     [Fact]
-    public async Task OpenFileInEditorCommand_WhenFileSelected_RaisesEditorRequestedWithAbsolutePath()
+    public async Task OpenFileInEditorCommand_WhenFileSelected_AsksLauncherToOpenAbsolutePath()
     {
+        _editorLauncher.TryOpen(Arg.Any<string?>(), Arg.Any<string>()).Returns(true);
         var sut = Create();
         await sut.LoadRepositoryAsync(@"C:\repo", CancellationToken.None);
         sut.SelectedFile = new FileRowViewModel(
             new ChangedFile("src/a.cs", null, ChangeKind.Modified, 1, 0, false));
-        string? path = null;
-        sut.EditorRequested += p => path = p;
 
         sut.OpenFileInEditorCommand.Execute(null);
 
-        path.ShouldBe(@"C:\repo\src/a.cs");
+        _editorLauncher.Received(1).TryOpen(Arg.Any<string?>(), @"C:\repo\src/a.cs");
     }
 
     [Fact]
-    public void OpenFileInEditorCommand_WhenNoFileSelected_DoesNotRaise()
+    public void OpenFileInEditorCommand_WhenNoFileSelected_DoesNotCallLauncher()
     {
         var sut = Create();
-        var raised = false;
-        sut.EditorRequested += _ => raised = true;
 
         sut.OpenFileInEditorCommand.Execute(null);
 
-        raised.ShouldBeFalse();
+        _editorLauncher.DidNotReceive().TryOpen(Arg.Any<string?>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task OpenFileInEditorCommand_WhenLauncherFails_SurfacesStatusMessage()
+    {
+        _editorLauncher.TryOpen(Arg.Any<string?>(), Arg.Any<string>()).Returns(false);
+        var sut = Create();
+        await sut.LoadRepositoryAsync(@"C:\repo", CancellationToken.None);
+        sut.SelectedFile = new FileRowViewModel(
+            new ChangedFile("a.cs", null, ChangeKind.Modified, 1, 0, false));
+
+        sut.OpenFileInEditorCommand.Execute(null);
+
+        sut.HasStatusMessage.ShouldBeTrue();
     }
 
     [Fact]

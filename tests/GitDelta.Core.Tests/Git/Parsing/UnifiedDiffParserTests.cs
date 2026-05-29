@@ -138,6 +138,25 @@ public class UnifiedDiffParserTests
     }
 
     [Fact]
+    public void Parse_HunkHeaderWithNonNumericRange_SkipsHunkWithoutThrowing()
+    {
+        // A non-numeric range token (unexpected git format/locale) must degrade gracefully:
+        // skip the malformed header rather than throw FormatException out of the parser.
+        var diff =
+            "@@ -x,3 +1,4 @@\n" +
+            "+should be ignored\n" +
+            "@@ -1,1 +1,1 @@\n" +
+            "-a\n" +
+            "+b\n";
+
+        var hunks = UnifiedDiffParser.Parse(diff);
+
+        hunks.Count.ShouldBe(1);
+        hunks[0].OldStart.ShouldBe(1);
+        hunks[0].Lines.Count.ShouldBe(2);
+    }
+
+    [Fact]
     public void Parse_EmptyInput_ReturnsEmptyList()
     {
         UnifiedDiffParser.Parse("").ShouldBeEmpty();

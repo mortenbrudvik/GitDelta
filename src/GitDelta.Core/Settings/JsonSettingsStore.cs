@@ -59,12 +59,42 @@ public sealed class JsonSettingsStore : ISettingsStore
         lock (_gate)
         {
             string directory = Path.GetDirectoryName(_settingsPath)!;
-            Directory.CreateDirectory(directory);
-
-            string json = JsonSerializer.Serialize(settings, JsonOptions);
             string tempPath = _settingsPath + ".tmp";
-            File.WriteAllText(tempPath, json);
-            File.Move(tempPath, _settingsPath, overwrite: true);
+
+            try
+            {
+                Directory.CreateDirectory(directory);
+
+                string json = JsonSerializer.Serialize(settings, JsonOptions);
+
+                // Write to a temp file then atomically replace the destination, so a crash
+                // mid-write can never corrupt the live settings file (a partial .tmp is
+                // simply overwritten on the next save).
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, _settingsPath, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Best-effort persistence: Save runs from shutdown, theme toggles, and pane
+                // drags, where a disk-full / locked-file / permissions failure must not crash
+                // the app. Drop the partial temp file and carry on with the in-memory state.
+                TryDeleteTempFile(tempPath);
+            }
+        }
+    }
+
+    private static void TryDeleteTempFile(string tempPath)
+    {
+        try
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Nothing more to do; a stray .tmp is harmless and overwritten on the next save.
         }
     }
 }

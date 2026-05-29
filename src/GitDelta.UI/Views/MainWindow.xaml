@@ -71,6 +71,17 @@
           VerticalContentAlignment="Stretch"
           Content="{Binding CurrentContent}" />
 
+      <!-- Repository-switch failures (raised from async event handlers) surface here
+           instead of crashing silently or leaving an unexplained blank window. -->
+      <ui:InfoBar
+          Margin="16,12"
+          VerticalAlignment="Top"
+          IsClosable="True"
+          IsOpen="{Binding HasErrorMessage}"
+          Message="{Binding ErrorMessage}"
+          Severity="Error"
+          Title="Couldn't open the repository" />
+
       <!-- ContentDialogHost must overlay the content for dialogs to display correctly -->
       <ui:ContentDialogHost x:Name="RootContentDialogHost" />
     </Grid>

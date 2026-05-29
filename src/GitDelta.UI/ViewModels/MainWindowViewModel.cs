@@ -2,6 +2,7 @@ using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GitDelta.Core.Cli;
 using GitDelta.Core.Git;
+using Microsoft.Extensions.Logging;
 
 namespace GitDelta.UI.ViewModels;
 
@@ -16,6 +17,7 @@ public partial class MainWindowViewModel : ObservableObject
     private readonly IGitReader _gitReader;
     private readonly Func<StartViewModel> _startFactory;
     private readonly Func<ShellViewModel> _shellFactory;
+    private readonly ILogger<MainWindowViewModel> _logger;
 
     private StartViewModel? _currentStart;
     private ShellViewModel? _currentShell;
@@ -23,11 +25,13 @@ public partial class MainWindowViewModel : ObservableObject
     public MainWindowViewModel(
         IGitReader gitReader,
         Func<StartViewModel> startFactory,
-        Func<ShellViewModel> shellFactory)
+        Func<ShellViewModel> shellFactory,
+        ILogger<MainWindowViewModel> logger)
     {
         _gitReader = gitReader;
         _startFactory = startFactory;
         _shellFactory = shellFactory;
+        _logger = logger;
     }
 
     [ObservableProperty]
@@ -38,7 +42,11 @@ public partial class MainWindowViewModel : ObservableObject
     /// (kicked off by an event handler) fails, instead of crashing silently.
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasErrorMessage))]
     private string? _errorMessage;
+
+    /// <summary>True when <see cref="ErrorMessage"/> has content; drives InfoBar visibility.</summary>
+    public bool HasErrorMessage => !string.IsNullOrWhiteSpace(ErrorMessage);
 
     /// <summary>
     /// Routes the parsed launch action. PrintHelp/PrintVersion are handled by
@@ -55,7 +63,7 @@ public partial class MainWindowViewModel : ObservableObject
                 string? root = await _gitReader.FindRepositoryRootAsync(start, ct);
                 if (root is null)
                 {
-                    await ShowStartAsync();
+                    await ShowStartAsync(ct);
                 }
                 else
                 {
@@ -67,13 +75,17 @@ public partial class MainWindowViewModel : ObservableObject
             case LaunchActionKind.PrintHelp:
             case LaunchActionKind.PrintVersion:
             default:
-                await ShowStartAsync();
+                await ShowStartAsync(ct);
                 break;
         }
     }
 
-    /// <summary>Shows the start screen and wires its repository-selected event.</summary>
-    public Task ShowStartAsync()
+    /// <summary>
+    /// Shows the start screen, wires its repository-selected event, and surfaces a
+    /// git-not-installed warning (the start screen is the first-run landing spot, where
+    /// a user without Git on PATH needs to be told to install it).
+    /// </summary>
+    public async Task ShowStartAsync(CancellationToken ct = default)
     {
         DetachCurrentContent();
 
@@ -81,7 +93,17 @@ public partial class MainWindowViewModel : ObservableObject
         start.RepositorySelected += OnRepositorySelected;
         _currentStart = start;
         CurrentContent = start;
-        return Task.CompletedTask;
+
+        try
+        {
+            GitAvailability availability = await _gitReader.CheckGitAsync(ct);
+            start.GitMissing = !availability.IsInstalled;
+        }
+        catch (Exception ex)
+        {
+            // The availability probe is best-effort; never let it block the start screen.
+            _logger.LogWarning(ex, "git availability check failed on start screen");
+        }
     }
 
     /// <summary>Loads the repository at <paramref name="repoRoot"/> into the shell.</summary>
@@ -144,6 +166,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to switch to repository {Folder}", folder);
             ErrorMessage = $"Could not open '{folder}': {ex.Message}";
         }
     }

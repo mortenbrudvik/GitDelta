@@ -95,6 +95,20 @@ public sealed class GitProcessRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_WhenExecutableMissing_ReturnsFailureInsteadOfThrowing()
+    {
+        // Simulates "git not on PATH": Process.Start throws Win32Exception, which must be
+        // translated into a failed GitResult so CheckGitAsync can report "not installed"
+        // and callers can show a helpful message instead of an unhandled crash.
+        var runner = new GitProcessRunner("gitdelta-no-such-exe-" + Guid.NewGuid().ToString("N"));
+
+        var result = await runner.RunAsync(_repoDir, ["--version"], TestContext.Current.CancellationToken);
+
+        result.Success.ShouldBeFalse();
+        result.StdErr.ShouldNotBeEmpty();
+    }
+
+    [Fact]
     public async Task RunAsync_AlreadyCancelledToken_ThrowsOperationCanceled()
     {
         var runner = new GitProcessRunner();

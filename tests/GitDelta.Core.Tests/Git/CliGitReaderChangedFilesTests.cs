@@ -121,6 +121,58 @@ public class CliGitReaderChangedFilesTests
     }
 
     [Fact]
+    public async Task GetChangedFilesAsync_WhenNumstatFails_ThrowsGitCommandException()
+    {
+        // A failed diff (e.g. "fatal: detected dubious ownership", corrupt index) must surface
+        // as an error rather than an empty file list that reads as "nothing changed".
+        Route(args =>
+        {
+            if (args.Contains("--numstat")) return new GitResult(128, Array.Empty<byte>(), "fatal: dubious ownership");
+            return Ok(string.Empty);
+        });
+
+        var ex = await Should.ThrowAsync<GitCommandException>(
+            async () => await _sut.GetChangedFilesAsync(
+                "C:/repo", new DiffSpec.TwoCommits("a", "b"), CancellationToken.None));
+
+        ex.StdErr.ShouldContain("dubious ownership");
+    }
+
+    [Fact]
+    public async Task GetChangedFilesAsync_WhenNameStatusFails_ThrowsGitCommandException()
+    {
+        Route(args =>
+        {
+            if (args.Contains("--numstat")) return Ok(string.Empty);
+            if (args.Contains("--name-status")) return new GitResult(128, Array.Empty<byte>(), "fatal: bad object");
+            return Ok(string.Empty);
+        });
+
+        await Should.ThrowAsync<GitCommandException>(
+            async () => await _sut.GetChangedFilesAsync(
+                "C:/repo", new DiffSpec.TwoCommits("a", "b"), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetChangedFilesAsync_WorkingTree_StatusProbeFailure_IsToleratedNotFatal()
+    {
+        // The porcelain-v2 status probe only supplements untracked files; its failure must not
+        // sink the whole changed-files view, which still has valid tracked-file data.
+        Route(args =>
+        {
+            if (args.Contains("status")) return new GitResult(128, Array.Empty<byte>(), "warning: could not read");
+            if (args.Contains("--numstat")) return Ok("1\t0\ttracked.cs" + NUL);
+            if (args.Contains("--name-status")) return Ok("M" + NUL + "tracked.cs" + NUL);
+            return Ok(string.Empty);
+        });
+
+        var files = await _sut.GetChangedFilesAsync(
+            "C:/repo", new DiffSpec.WorkingTreeVsHead(), CancellationToken.None);
+
+        files.ShouldContain(f => f.Path == "tracked.cs");
+    }
+
+    [Fact]
     public async Task GetChangedFilesAsync_NonRootCommit_DiffsAgainstCaretParent()
     {
         IReadOnlyList<string>? numstatArgs = null;

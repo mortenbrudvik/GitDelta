@@ -191,7 +191,9 @@ public partial class DiffView : UserControl
 
         editor.TextArea.TextView.BackgroundRenderers.Add(bg);
         editor.TextArea.LeftMargins.Insert(0, bar);
-        editor.TextArea.TextView.LineTransformers.Add(intra); // intra last for now; syntax inserts before it in Phase 8
+        // Intra-line colorizer added last; ApplySyntax() inserts the syntax colorizer BEFORE
+        // it so diff tints layer on top of syntax foregrounds.
+        editor.TextArea.TextView.LineTransformers.Add(intra);
 
         // Built-in incremental find (Ctrl+F) + programmatic ShowFind().
         _searchPanels[editor] = ICSharpCode.AvalonEdit.Search.SearchPanel.Install(editor.TextArea);

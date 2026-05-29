@@ -144,6 +144,23 @@ public class GitLogParserTests
     }
 
     [Fact]
+    public void Parse_RecordWithUnparseableDate_IsSkippedWithoutThrowing()
+    {
+        // A malformed date (unexpected git config/locale) must not crash history loading;
+        // skip the offending record and keep the valid ones.
+        var good = Record("good111", "", "A", "a@x", "2026-01-01T00:00:00Z",
+            "A", "a@x", "2026-01-01T00:00:00Z", "good", "");
+        var bad = Record("bad2222", "", "B", "b@x", "not-a-date",
+            "B", "b@x", "not-a-date", "bad", "");
+        var stdout = Bytes(good + NUL + bad + NUL);
+
+        var commits = GitLogParser.Parse(stdout);
+
+        commits.Count.ShouldBe(1);
+        commits[0].Sha.ShouldBe("good111");
+    }
+
+    [Fact]
     public void Parse_TrailingTerminatorOnly_ProducesNoPhantomRecord()
     {
         var record = Record("only111", "", "A", "a@x", "2026-01-01T00:00:00Z",

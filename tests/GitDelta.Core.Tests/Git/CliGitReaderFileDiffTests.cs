@@ -162,6 +162,46 @@ public class CliGitReaderFileDiffTests
     }
 
     [Fact]
+    public async Task GetFileDiffAsync_PathAbsentFromMetadata_SynthesizesModifiedEntry()
+    {
+        // When numstat/name-status return nothing for the path (e.g. an untracked file opened
+        // in the diff view), metadata falls back to a synthesized Modified entry, not a crash.
+        Route(args =>
+        {
+            if (args.Contains("rev-list")) return Ok("1\n");
+            if (args.Contains("--numstat")) return Ok(string.Empty);
+            if (args.Contains("--name-status")) return Ok(string.Empty);
+            return Ok(TextualDiff);
+        });
+
+        var diff = await _sut.GetFileDiffAsync(
+            "C:/repo", new DiffSpec.TwoCommits("a", "b"), "app.cs", contextLines: 3, CancellationToken.None);
+
+        diff.File.Path.ShouldBe("app.cs");
+        diff.File.Kind.ShouldBe(ChangeKind.Modified);
+        diff.Hunks.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GetFileDiffAsync_WhenDiffFails_ThrowsGitCommandException()
+    {
+        // The per-file diff failing must surface, not render as a blank/empty diff.
+        string numstat = "1\t1\tapp.cs" + NUL;
+        string nameStatus = "M" + NUL + "app.cs" + NUL;
+        Route(args =>
+        {
+            if (args.Contains("rev-list")) return Ok("1\n");
+            if (args.Contains("--numstat")) return Ok(numstat);
+            if (args.Contains("--name-status")) return Ok(nameStatus);
+            return new GitResult(128, Array.Empty<byte>(), "fatal: bad revision app.cs");
+        });
+
+        await Should.ThrowAsync<GitCommandException>(
+            async () => await _sut.GetFileDiffAsync(
+                "C:/repo", new DiffSpec.TwoCommits("baseSha", "targetSha"), "app.cs", contextLines: 3, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task GetFileDiffAsync_CommitVsParent_ProbesRootExactlyOnce()
     {
         // A CommitVsParent spec triggers one rev-list root probe. The refactor must resolve

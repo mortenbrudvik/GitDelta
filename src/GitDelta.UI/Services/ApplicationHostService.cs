@@ -51,7 +51,11 @@ public sealed class ApplicationHostService : IHostedService
             }
             catch (Exception ex)
             {
+                // Last-resort guard: the expected failures (git missing/too old, broken repo)
+                // are surfaced in-place by the ViewModels; this catches anything unexpected so
+                // the user gets a message instead of an unexplained blank window.
                 _logger.LogError(ex, "Failed to initialize main window content");
+                viewModel.ErrorMessage = $"GitDelta could not start up cleanly: {ex.Message}";
             }
         };
 

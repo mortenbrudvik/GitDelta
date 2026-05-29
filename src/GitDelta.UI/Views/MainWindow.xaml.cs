@@ -1,6 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Windows;
 using GitDelta.Core.Settings;
 using GitDelta.UI.Services;
@@ -68,7 +66,6 @@ public partial class MainWindow : FluentWindow, IWindow
         if (_subscribedShell is not null)
         {
             _subscribedShell.SettingsRequested -= OnSettingsRequested;
-            _subscribedShell.EditorRequested -= OnEditorRequested;
             _subscribedShell = null;
         }
 
@@ -79,7 +76,6 @@ public partial class MainWindow : FluentWindow, IWindow
 
         _subscribedShell = shell;
         shell.SettingsRequested += OnSettingsRequested;
-        shell.EditorRequested += OnEditorRequested;
     }
 
     // ── Settings dialog ────────────────────────────────────────────────────────
@@ -110,107 +106,6 @@ public partial class MainWindow : FluentWindow, IWindow
             _subscribedShell.Diff.TabSize = updated.TabSize;
         }
     }
-
-    // ── Open-in-editor wiring ──────────────────────────────────────────────────
-
-    private void OnEditorRequested(string absolutePath)
-    {
-        var settings = _settingsStore.Load();
-        var command = settings.ExternalEditorCommand;
-
-        if (!string.IsNullOrWhiteSpace(command))
-        {
-            TryLaunchEditor(command, absolutePath);
-        }
-        else
-        {
-            // Fall back: let the OS open the file with its default application.
-            try
-            {
-                Process.Start(new ProcessStartInfo(absolutePath) { UseShellExecute = true });
-            }
-            catch (Exception)
-            {
-                // If OS default also fails, silently ignore — there is nothing useful we can
-                // do without a full notification stack at this stage.
-            }
-        }
-    }
-
-    private static void TryLaunchEditor(string commandTemplate, string filePath)
-    {
-        // Parse the TEMPLATE (with {file} left as a literal bare token) so editor paths with
-        // spaces (e.g. "C:\Program Files\Microsoft VS Code\Code.exe" -g {file}) survive, then
-        // substitute {file} POST-PARSE so a spaced FILE path stays a single argv element.
-        var templateArgv = SplitCommandLine(commandTemplate);
-        if (EditorCommandBuilder.TryBuild(templateArgv, filePath, out var fileName, out var arguments))
-        {
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = fileName,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                });
-                return;
-            }
-            catch (Exception)
-            {
-                // Fall through to the OS-default fallback below.
-            }
-        }
-
-        // Fall back to OS shell open if the custom command failed or could not be parsed.
-        try
-        {
-            Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
-        }
-        catch (Exception)
-        {
-            // Silent ignore — nothing more we can do without a notification stack.
-        }
-    }
-
-    /// <summary>
-    /// Splits a command line into argv respecting double-quote grouping, using the
-    /// Win32 <c>CommandLineToArgvW</c> shell parser (same rules as the OS).
-    /// </summary>
-    private static string[] SplitCommandLine(string commandLine)
-    {
-        if (string.IsNullOrWhiteSpace(commandLine))
-        {
-            return [];
-        }
-
-        var argvPtr = CommandLineToArgvW(commandLine, out var argc);
-        if (argvPtr == nint.Zero)
-        {
-            return [];
-        }
-
-        try
-        {
-            var args = new string[argc];
-            for (var i = 0; i < argc; i++)
-            {
-                var strPtr = Marshal.ReadIntPtr(argvPtr, i * nint.Size);
-                args[i] = Marshal.PtrToStringUni(strPtr) ?? string.Empty;
-            }
-
-            return args;
-        }
-        finally
-        {
-            LocalFree(argvPtr);
-        }
-    }
-
-    [DllImport("shell32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern nint CommandLineToArgvW(string lpCmdLine, out int pNumArgs);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern nint LocalFree(nint hMem);
 
     // ── Window size persistence ────────────────────────────────────────────────
 

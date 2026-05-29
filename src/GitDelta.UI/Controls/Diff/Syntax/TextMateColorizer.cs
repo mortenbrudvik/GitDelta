@@ -12,6 +12,10 @@ namespace GitDelta.UI.Controls.Diff.Syntax;
 /// </summary>
 public sealed class TextMateColorizer : DocumentColorizingTransformer
 {
+    // Per-line tokenization runs on the WPF render thread. Cap it so a pathological line or
+    // grammar degrades to partial/monochrome coloring instead of wedging the UI indefinitely.
+    private static readonly TimeSpan TokenizeTimeLimit = TimeSpan.FromMilliseconds(500);
+
     private readonly TextMateThemeProvider _provider;
     private readonly IGrammar _grammar;
 
@@ -31,7 +35,7 @@ public sealed class TextMateColorizer : DocumentColorizingTransformer
         string text = CurrentContext.Document.GetText(line);
         IStateStack? startState = GetStartState(line);
 
-        ITokenizeLineResult result = _grammar.TokenizeLine(text, startState, TimeSpan.MaxValue);
+        ITokenizeLineResult result = _grammar.TokenizeLine(text, startState, TokenizeTimeLimit);
 
         // Remember the end state as the next line's start state.
         _lineStartState[line.LineNumber + 1] = result.RuleStack;
@@ -67,8 +71,8 @@ public sealed class TextMateColorizer : DocumentColorizingTransformer
 
         // Resume from the NEAREST already-cached line at or below the target instead
         // of always restarting at line 1, so scroll-down and re-applies don't redo the
-        // whole prefix on the render thread (review fix #2). Line 1 is always cached
-        // (seeded null in the constructor), so this loop always finds a resume point.
+        // whole prefix on the render thread. Line 1 is always cached (seeded null in the
+        // constructor), so this loop always finds a resume point.
         int resumeAt = target;
         while (resumeAt > 1 && !_lineStartState.ContainsKey(resumeAt))
         {
@@ -80,7 +84,7 @@ public sealed class TextMateColorizer : DocumentColorizingTransformer
         {
             DocumentLine prior = CurrentContext.Document.GetLineByNumber(n);
             string priorText = CurrentContext.Document.GetText(prior);
-            ITokenizeLineResult priorResult = _grammar.TokenizeLine(priorText, running, TimeSpan.MaxValue);
+            ITokenizeLineResult priorResult = _grammar.TokenizeLine(priorText, running, TokenizeTimeLimit);
             running = priorResult.RuleStack;
             _lineStartState[n + 1] = running;
         }

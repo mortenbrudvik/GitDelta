@@ -83,6 +83,51 @@ public class StatusPorcelainV2ParserTests
     }
 
     [Fact]
+    public void Parse_Copied_TypeTwoLineWithCPrefix_MapsToCopied()
+    {
+        // The type-2 XY field starting with 'C' distinguishes a copy from a rename; a
+        // regression here would mislabel copies. (Previously untested branch.)
+        var stdout = Bytes(
+            "2 C. N... 100644 100644 100644 4444444444444444444444444444444444444444 " +
+            "4444444444444444444444444444444444444444 C100 copy.cs" + NUL + "orig.cs" + NUL);
+
+        var files = StatusPorcelainV2Parser.Parse(stdout);
+
+        files.Count.ShouldBe(1);
+        files[0].Kind.ShouldBe(ChangeKind.Copied);
+        files[0].Path.ShouldBe("copy.cs");
+        files[0].OldPath.ShouldBe("orig.cs");
+    }
+
+    [Fact]
+    public void Parse_OrdinaryModified_PathWithSpaces_KeepsFullPath()
+    {
+        // The fixed-count split must keep a space-containing path intact at the final index.
+        var stdout = Bytes(
+            "1 .M N... 100644 100644 100644 1111111111111111111111111111111111111111 " +
+            "1111111111111111111111111111111111111111 my source file.cs" + NUL);
+
+        var files = StatusPorcelainV2Parser.Parse(stdout);
+
+        files[0].Kind.ShouldBe(ChangeKind.Modified);
+        files[0].Path.ShouldBe("my source file.cs");
+    }
+
+    [Fact]
+    public void Parse_Renamed_NewPathWithSpaces_KeepsFullPath()
+    {
+        var stdout = Bytes(
+            "2 R. N... 100644 100644 100644 4444444444444444444444444444444444444444 " +
+            "4444444444444444444444444444444444444444 R100 my new name.cs" + NUL + "old.cs" + NUL);
+
+        var files = StatusPorcelainV2Parser.Parse(stdout);
+
+        files[0].Kind.ShouldBe(ChangeKind.Renamed);
+        files[0].Path.ShouldBe("my new name.cs");
+        files[0].OldPath.ShouldBe("old.cs");
+    }
+
+    [Fact]
     public void Parse_Unmerged_TypeULine_MapsToConflicted()
     {
         // Type u: "u UU N... <m1> <m2> <m3> <mW> <h1> <h2> <h3> conflicted.cs\0"

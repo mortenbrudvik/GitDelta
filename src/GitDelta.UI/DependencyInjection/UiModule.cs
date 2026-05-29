@@ -19,9 +19,18 @@ public sealed class UiModule : Module
             .SingleInstance();
 
         // IFolderPicker — WPF implementation using OpenFolderDialog (.NET 10).
-        // Phase 9 may enhance this with additional UX (last-used folder, etc.).
         builder.RegisterType<WpfFolderPicker>()
             .As<IFolderPicker>()
+            .SingleInstance();
+
+        // External-editor launching (custom command + OS-default fallback), behind an
+        // IProcessStarter seam so the decision logic is unit-tested.
+        builder.RegisterType<ProcessStarter>()
+            .As<IProcessStarter>()
+            .SingleInstance();
+
+        builder.RegisterType<ExternalEditorLauncher>()
+            .As<IExternalEditorLauncher>()
             .SingleInstance();
 
         // ViewModels — InstancePerDependency (transient). Func<T> factories are

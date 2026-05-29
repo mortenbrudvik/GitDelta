@@ -101,13 +101,17 @@ public class CliGitReaderHistoryTests
     }
 
     [Fact]
-    public async Task GetHistoryAsync_NonZeroExit_ReturnsEmptyList()
+    public async Task GetHistoryAsync_NonZeroExit_ThrowsGitCommandExceptionCarryingStdErr()
     {
+        // A failed 'git log' must surface as an error, not a silent empty list that looks
+        // identical to a repository with no commits.
         _runner.RunAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
                .Returns(Task.FromResult(new GitResult(128, Array.Empty<byte>(), "fatal: bad revision")));
 
-        var commits = await _sut.GetHistoryAsync("C:/repo", skip: 0, maxCount: 50, CancellationToken.None);
+        var ex = await Should.ThrowAsync<GitCommandException>(
+            async () => await _sut.GetHistoryAsync("C:/repo", skip: 0, maxCount: 50, CancellationToken.None));
 
-        commits.ShouldBeEmpty();
+        ex.StdErr.ShouldContain("fatal: bad revision");
+        ex.ExitCode.ShouldBe(128);
     }
 }

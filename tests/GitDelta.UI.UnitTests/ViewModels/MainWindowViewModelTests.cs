@@ -4,6 +4,7 @@ using GitDelta.Core.Models;
 using GitDelta.Core.Settings;
 using GitDelta.UI.Services;
 using GitDelta.UI.ViewModels;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
 using Xunit;
@@ -16,6 +17,7 @@ public class MainWindowViewModelTests
     private readonly ISettingsStore _settings = Substitute.For<ISettingsStore>();
     private readonly IFolderPicker _picker = Substitute.For<IFolderPicker>();
     private readonly IThemeService _theme = Substitute.For<IThemeService>();
+    private readonly IExternalEditorLauncher _editorLauncher = Substitute.For<IExternalEditorLauncher>();
 
     public MainWindowViewModelTests()
     {
@@ -32,7 +34,8 @@ public class MainWindowViewModelTests
         new(
             _git,
             () => new StartViewModel(_picker),
-            () => new ShellViewModel(_git, _settings, _picker, _theme));
+            () => new ShellViewModel(_git, _settings, _picker, _theme, _editorLauncher, NullLogger<ShellViewModel>.Instance),
+            NullLogger<MainWindowViewModel>.Instance);
 
     [Fact]
     public async Task InitializeAsync_PrintHelp_ShowsStartScreen()
@@ -62,6 +65,32 @@ public class MainWindowViewModelTests
         await sut.InitializeAsync(new LaunchAction(LaunchActionKind.ShowStartScreen), CancellationToken.None);
 
         sut.CurrentContent.ShouldBeOfType<StartViewModel>();
+    }
+
+    [Fact]
+    public async Task ShowStartScreen_WhenGitMissing_FlagsGitMissingOnStartViewModel()
+    {
+        // The start screen is the first-run landing spot; a user without Git on PATH must
+        // see the install warning, which means GitMissing has to actually be set.
+        _git.CheckGitAsync(Arg.Any<CancellationToken>())
+            .Returns(new GitAvailability(false, null, false));
+        var sut = Create();
+
+        await sut.InitializeAsync(new LaunchAction(LaunchActionKind.ShowStartScreen), CancellationToken.None);
+
+        var start = sut.CurrentContent.ShouldBeOfType<StartViewModel>();
+        start.GitMissing.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ShowStartScreen_WhenGitInstalled_DoesNotFlagGitMissing()
+    {
+        var sut = Create();
+
+        await sut.InitializeAsync(new LaunchAction(LaunchActionKind.ShowStartScreen), CancellationToken.None);
+
+        var start = sut.CurrentContent.ShouldBeOfType<StartViewModel>();
+        start.GitMissing.ShouldBeFalse();
     }
 
     [Fact]

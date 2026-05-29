@@ -69,6 +69,18 @@ public sealed class JsonSettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void Save_WhenTargetFolderIsBlockedByAFile_DoesNotThrow()
+    {
+        // A FILE named "GitDelta" sits where the settings folder should be, so creating the
+        // directory fails. Save is called from shutdown/theme-toggle/pane-drag, where an
+        // unguarded IO exception would crash the app; it must degrade to a best-effort no-op.
+        File.WriteAllText(Path.Combine(_baseDir, "GitDelta"), "blocker");
+        var store = new JsonSettingsStore(_baseDir);
+
+        Should.NotThrow(() => store.Save(new AppSettings()));
+    }
+
+    [Fact]
     public void Save_CreatesFileUnderGitDeltaFolder()
     {
         var store = new JsonSettingsStore(_baseDir);

@@ -99,4 +99,38 @@ public class ModelDefaultsTests
         settings.Theme.ShouldBe(AppTheme.Dark);
         settings.TabSize.ShouldBe(4);
     }
+
+    [Fact]
+    public void AppSettings_NegativeContextLines_ClampedToZero()
+    {
+        // ContextLines flows into 'git diff -U{n}', where a negative value is invalid.
+        new AppSettings { ContextLines = -5 }.ContextLines.ShouldBe(0);
+    }
+
+    [Fact]
+    public void AppSettings_ExcessiveContextLines_ClampedToUpperBound()
+    {
+        new AppSettings { ContextLines = 10_000 }.ContextLines.ShouldBe(50);
+    }
+
+    [Fact]
+    public void AppSettings_ZeroTabSize_ClampedToMinimum()
+    {
+        new AppSettings { TabSize = 0 }.TabSize.ShouldBe(1);
+    }
+
+    [Fact]
+    public void AppSettings_NonFiniteWindowSize_FallsBackToDefault()
+    {
+        var settings = new AppSettings { WindowWidth = double.NaN, WindowHeight = double.PositiveInfinity };
+
+        settings.WindowWidth.ShouldBe(1100);
+        settings.WindowHeight.ShouldBe(720);
+    }
+
+    [Fact]
+    public void AppSettings_NegativePaneWidth_ClampedToMinimum()
+    {
+        new AppSettings { HistoryPaneWidth = -10 }.HistoryPaneWidth.ShouldBe(50);
+    }
 }

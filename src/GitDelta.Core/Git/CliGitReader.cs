@@ -82,10 +82,7 @@ public sealed partial class CliGitReader : IGitReader
         };
 
         GitResult result = await _runner.RunAsync(repoRoot, args, ct).ConfigureAwait(false);
-        if (!result.Success)
-        {
-            return Array.Empty<CommitInfo>();
-        }
+        EnsureSuccess(result, "log");
 
         return GitLogParser.Parse(result.StdOut);
     }
@@ -104,13 +101,13 @@ public sealed partial class CliGitReader : IGitReader
         GitResult numstatResult = await _runner.RunAsync(repoRoot, numstatArgs, ct).ConfigureAwait(false);
         GitResult nameStatusResult = await _runner.RunAsync(repoRoot, nameStatusArgs, ct).ConfigureAwait(false);
 
-        IReadOnlyList<NumstatEntry> numstat = numstatResult.Success
-            ? NumstatParser.Parse(numstatResult.StdOut)
-            : Array.Empty<NumstatEntry>();
+        // The diff itself failing (bad object, dubious ownership, corrupt index, ...) is a real
+        // error, not an empty changeset — surface it rather than showing a blank file list.
+        EnsureSuccess(numstatResult, "diff --numstat");
+        EnsureSuccess(nameStatusResult, "diff --name-status");
 
-        IReadOnlyList<NameStatusEntry> nameStatus = nameStatusResult.Success
-            ? NameStatusParser.Parse(nameStatusResult.StdOut)
-            : Array.Empty<NameStatusEntry>();
+        IReadOnlyList<NumstatEntry> numstat = NumstatParser.Parse(numstatResult.StdOut);
+        IReadOnlyList<NameStatusEntry> nameStatus = NameStatusParser.Parse(nameStatusResult.StdOut);
 
         IReadOnlyList<ChangedFile> extra = Array.Empty<ChangedFile>();
         if (spec is DiffSpec.WorkingTreeVsHead)
@@ -119,6 +116,8 @@ public sealed partial class CliGitReader : IGitReader
                 .RunAsync(repoRoot, new[] { "status", "--porcelain=v2", "-z" }, ct)
                 .ConfigureAwait(false);
 
+            // Best-effort: the status probe only supplements untracked files. If it fails we
+            // still show the (valid) tracked-file diff rather than failing the whole view.
             if (statusResult.Success)
             {
                 extra = StatusPorcelainV2Parser.Parse(statusResult.StdOut);
@@ -168,7 +167,11 @@ public sealed partial class CliGitReader : IGitReader
         diffArgs.Add(path);
 
         GitResult result = await _runner.RunAsync(repoRoot, diffArgs, ct).ConfigureAwait(false);
-        string diffText = result.Success ? Encoding.UTF8.GetString(result.StdOut) : string.Empty;
+        EnsureSuccess(result, "diff");
+
+        // Textual diffs are UTF-8; binary content is short-circuited just below via the
+        // IsBinary / "Binary files " check, so decoding the raw stdout bytes here is safe.
+        string diffText = Encoding.UTF8.GetString(result.StdOut);
 
         // Binary: git emits a "Binary files ... differ" line and no hunks.
         if (file.IsBinary || diffText.Contains("Binary files ", StringComparison.Ordinal))
@@ -215,19 +218,31 @@ public sealed partial class CliGitReader : IGitReader
         GitResult numstatResult = await _runner.RunAsync(repoRoot, numstatArgs, ct).ConfigureAwait(false);
         GitResult nameStatusResult = await _runner.RunAsync(repoRoot, nameStatusArgs, ct).ConfigureAwait(false);
 
-        IReadOnlyList<NumstatEntry> numstat = numstatResult.Success
-            ? NumstatParser.Parse(numstatResult.StdOut)
-            : Array.Empty<NumstatEntry>();
+        EnsureSuccess(numstatResult, "diff --numstat");
+        EnsureSuccess(nameStatusResult, "diff --name-status");
 
-        IReadOnlyList<NameStatusEntry> nameStatus = nameStatusResult.Success
-            ? NameStatusParser.Parse(nameStatusResult.StdOut)
-            : Array.Empty<NameStatusEntry>();
+        IReadOnlyList<NumstatEntry> numstat = NumstatParser.Parse(numstatResult.StdOut);
+        IReadOnlyList<NameStatusEntry> nameStatus = NameStatusParser.Parse(nameStatusResult.StdOut);
 
         IReadOnlyList<ChangedFile> merged = ChangedFileMerge.Merge(numstat, nameStatus, Array.Empty<ChangedFile>());
 
         return merged.FirstOrDefault(f => f.Path == path)
             ?? new ChangedFile(path, OldPath: null, ChangeKind.Modified,
                                AddedLines: null, DeletedLines: null, IsBinary: false);
+    }
+
+    /// <summary>
+    /// Throws <see cref="GitCommandException"/> when a git command that was expected to
+    /// succeed failed. Used for the data-returning operations (log/diff); the availability,
+    /// repo-root, and root-commit probes intentionally treat a non-zero exit as a signal
+    /// and must not call this.
+    /// </summary>
+    private static void EnsureSuccess(GitResult result, string operation)
+    {
+        if (!result.Success)
+        {
+            throw new GitCommandException(operation, result.ExitCode, result.StdErr);
+        }
     }
 
     [GeneratedRegex(@"git version (?<v>(?<major>\d+)\.(?<minor>\d+)\S*)", RegexOptions.CultureInvariant)]

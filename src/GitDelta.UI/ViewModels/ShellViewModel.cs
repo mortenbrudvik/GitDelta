@@ -7,6 +7,7 @@ using GitDelta.Core.Models;
 using GitDelta.Core.Settings;
 using GitDelta.UI.Controls.Diff.Syntax;
 using GitDelta.UI.Services;
+using Microsoft.Extensions.Logging;
 
 namespace GitDelta.UI.ViewModels;
 
@@ -22,22 +23,34 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     private readonly ISettingsStore _settings;
     private readonly IFolderPicker _folderPicker;
     private readonly IThemeService _themeService;
+    private readonly IExternalEditorLauncher _editorLauncher;
+    private readonly ILogger<ShellViewModel> _logger;
 
     private AppSettings _appSettings;
     private int _historyLoaded;
     private int _busyCount;
     private bool _disposed;
 
+    // Per-pane cancellation for the fire-and-forget loads kicked off by selection changes.
+    // Each new selection cancels the previous in-flight load so results cannot arrive out of
+    // order and overwrite the pane with stale content.
+    private CancellationTokenSource? _fileDiffCts;
+    private CancellationTokenSource? _comparisonCts;
+
     public ShellViewModel(
         IGitReader gitReader,
         ISettingsStore settings,
         IFolderPicker folderPicker,
-        IThemeService themeService)
+        IThemeService themeService,
+        IExternalEditorLauncher editorLauncher,
+        ILogger<ShellViewModel> logger)
     {
         _gitReader = gitReader;
         _settings = settings;
         _folderPicker = folderPicker;
         _themeService = themeService;
+        _editorLauncher = editorLauncher;
+        _logger = logger;
         _appSettings = settings.Load();
 
         WorkingTreeRow = new WorkingTreeRowViewModel();
@@ -50,12 +63,12 @@ public partial class ShellViewModel : ObservableObject, IDisposable
             IsDarkTheme = _themeService.IsDark
         };
 
-        // ShellViewModel is transient; IThemeService is a singleton. Subscribe here
-        // and unsubscribe in Dispose so a replaced shell can never leak via this
-        // event (MainWindowViewModel.DetachCurrentContent disposes the old shell).
         _historyPaneWidth = _appSettings.HistoryPaneWidth;
         _filesPaneWidth = _appSettings.FilesPaneWidth;
 
+        // ShellViewModel is transient; IThemeService is a singleton. Subscribe here
+        // and unsubscribe in Dispose so a replaced shell can never leak via this
+        // event (MainWindowViewModel.DetachCurrentContent disposes the old shell).
         _themeService.IsDarkChanged += OnThemeIsDarkChanged;
     }
 
@@ -71,7 +84,10 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         _themeService.Toggle();
     }
 
-    /// <summary>Unsubscribes from the singleton theme service to avoid a leak.</summary>
+    /// <summary>
+    /// Unsubscribes from the singleton theme service to avoid a leak, and cancels/disposes
+    /// any in-flight per-pane loads so they cannot complete against a disposed shell.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -81,6 +97,9 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
         _disposed = true;
         _themeService.IsDarkChanged -= OnThemeIsDarkChanged;
+
+        CancelAndDispose(ref _fileDiffCts);
+        CancelAndDispose(ref _comparisonCts);
     }
 
     [ObservableProperty]
@@ -95,8 +114,16 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isBusy;
 
+    /// <summary>
+    /// A user-facing status/error line (git not installed, git too old, or a failed git
+    /// command). Bound to an InfoBar in ShellView via <see cref="HasStatusMessage"/>.
+    /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatusMessage))]
     private string? _statusMessage;
+
+    /// <summary>True when <see cref="StatusMessage"/> has content; drives InfoBar visibility.</summary>
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
 
     [ObservableProperty]
     private double _historyPaneWidth;
@@ -132,7 +159,9 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     {
         if (value is not null)
         {
-            _ = ShowFileDiffAsync(value, CancellationToken.None);
+            // Cancel any prior file-diff load so a slower earlier read can't overwrite this one.
+            CancellationToken token = ResetCts(ref _fileDiffCts);
+            _ = RunGuardedAsync(ct => ShowFileDiffAsync(value, ct), token);
         }
     }
 
@@ -166,22 +195,32 @@ public partial class ShellViewModel : ObservableObject, IDisposable
             RepoRoot = repoRoot;
             RepoName = GetRepoName(repoRoot);
 
-            History.Clear();
-            SelectedCommits.Clear();
-            _historyLoaded = 0;
-
-            IReadOnlyList<CommitInfo> page =
-                await _gitReader.GetHistoryAsync(repoRoot, 0, HistoryPageSize, ct);
-            foreach (CommitInfo commit in page)
+            try
             {
-                History.Add(new CommitRowViewModel(commit));
+                History.Clear();
+                SelectedCommits.Clear();
+                _historyLoaded = 0;
+
+                IReadOnlyList<CommitInfo> page =
+                    await _gitReader.GetHistoryAsync(repoRoot, 0, HistoryPageSize, ct);
+                foreach (CommitInfo commit in page)
+                {
+                    History.Add(new CommitRowViewModel(commit));
+                }
+
+                _historyLoaded = page.Count;
+                IsRepoLoaded = true;
+                StatusMessage = null;
+
+                await SelectWorkingTreeAsync(ct);
             }
-
-            _historyLoaded = page.Count;
-            IsRepoLoaded = true;
-            StatusMessage = null;
-
-            await SelectWorkingTreeAsync(ct);
+            catch (GitCommandException ex)
+            {
+                // A broken repo (bad object, dubious ownership, corrupt index, ...) must show
+                // the failure, not an empty workspace that reads as "nothing here".
+                _logger.LogWarning(ex, "Failed to load repository {RepoRoot}", repoRoot);
+                StatusMessage = ex.Message;
+            }
         }
     }
 
@@ -203,7 +242,9 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     private void EndBusy()
     {
-        if (--_busyCount == 0)
+        // Clamp against underflow: a double-dispose or unexpected interleaving must never
+        // drive the counter negative and wedge IsBusy permanently true.
+        if (_busyCount > 0 && --_busyCount == 0)
         {
             IsBusy = false;
         }
@@ -241,7 +282,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
             row.IsSelected = false;
         }
         SelectedCommits.Clear();
-        await RecomputeComparisonAsync(ct);
+        await RunGuardedAsync(RecomputeComparisonAsync, ct);
     }
 
     /// <summary>
@@ -289,6 +330,11 @@ public partial class ShellViewModel : ObservableObject, IDisposable
             IReadOnlyList<ChangedFile> files =
                 await _gitReader.GetChangedFilesAsync(RepoRoot, spec, ct);
 
+            // A newer selection may have superseded this load while git was running; bail
+            // before mutating the pane so the visible file list always matches the latest
+            // selection rather than whichever read happened to finish last.
+            ct.ThrowIfCancellationRequested();
+
             ChangedFiles.Clear();
             foreach (ChangedFile file in files)
             {
@@ -297,6 +343,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
             SelectedFile = null;
             Diff.FileDiff = null;
+            StatusMessage = null;
         }
     }
 
@@ -381,7 +428,10 @@ public partial class ShellViewModel : ObservableObject, IDisposable
             WorkingTreeRow.IsSelected = false;
         }
 
-        _ = RecomputeComparisonAsync(CancellationToken.None);
+        // Cancel any prior comparison load; a rapid sequence of selection changes must not
+        // leave the file list showing the result of a superseded selection.
+        CancellationToken token = ResetCts(ref _comparisonCts);
+        _ = RunGuardedAsync(RecomputeComparisonAsync, token);
     }
 
     /// <summary>Raised when the user asks to open a different repository.</summary>
@@ -389,9 +439,6 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>Raised when the user opens the settings dialog.</summary>
     public event Action? SettingsRequested;
-
-    /// <summary>Raised with the absolute path of the file to open externally.</summary>
-    public event Action<string>? EditorRequested;
 
     /// <summary>
     /// Loads the per-file diff for the current comparison (already enriched with
@@ -417,10 +464,15 @@ public partial class ShellViewModel : ObservableObject, IDisposable
             FileDiff diff = await _gitReader.GetFileDiffAsync(
                 RepoRoot, spec, file.DisplayPath, _appSettings.ContextLines, ct);
 
+            // Superseded by a newer file selection while git was running — don't apply a
+            // stale diff over the file the user is now looking at.
+            ct.ThrowIfCancellationRequested();
+
             Diff.SyntaxLanguageId = _appSettings.SyntaxHighlighting
                 ? LanguageIdMap.FromPath(file.DisplayPath)
                 : null;
             Diff.FileDiff = diff;
+            StatusMessage = null;
         }
     }
 
@@ -439,7 +491,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task RefreshAsync(CancellationToken ct)
     {
-        await RecomputeComparisonAsync(ct);
+        await RunGuardedAsync(RecomputeComparisonAsync, ct);
     }
 
     [RelayCommand]
@@ -450,14 +502,55 @@ public partial class ShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        IReadOnlyList<CommitInfo> page =
-            await _gitReader.GetHistoryAsync(RepoRoot, _historyLoaded, HistoryPageSize, ct);
-        foreach (CommitInfo commit in page)
+        await RunGuardedAsync(async token =>
         {
-            History.Add(new CommitRowViewModel(commit));
-        }
+            IReadOnlyList<CommitInfo> page =
+                await _gitReader.GetHistoryAsync(RepoRoot, _historyLoaded, HistoryPageSize, token);
+            foreach (CommitInfo commit in page)
+            {
+                History.Add(new CommitRowViewModel(commit));
+            }
 
-        _historyLoaded += page.Count;
+            _historyLoaded += page.Count;
+        }, ct);
+    }
+
+    /// <summary>
+    /// Runs an asynchronous git-backed operation, converting cancellation into a silent no-op
+    /// (a newer request superseded it) and a <see cref="GitCommandException"/> into a logged,
+    /// user-visible <see cref="StatusMessage"/> instead of an unobserved fault or a blank pane.
+    /// </summary>
+    private async Task RunGuardedAsync(Func<CancellationToken, Task> operation, CancellationToken ct)
+    {
+        try
+        {
+            await operation(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer selection or torn down on dispose; nothing to surface.
+        }
+        catch (GitCommandException ex)
+        {
+            _logger.LogWarning(ex, "git command failed");
+            StatusMessage = ex.Message;
+        }
+    }
+
+    /// <summary>Cancels and disposes the previous token source, returning a fresh token.</summary>
+    private static CancellationToken ResetCts(ref CancellationTokenSource? cts)
+    {
+        cts?.Cancel();
+        cts?.Dispose();
+        cts = new CancellationTokenSource();
+        return cts.Token;
+    }
+
+    private static void CancelAndDispose(ref CancellationTokenSource? cts)
+    {
+        cts?.Cancel();
+        cts?.Dispose();
+        cts = null;
     }
 
     [RelayCommand]
@@ -475,6 +568,12 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         }
 
         string absolute = Path.Combine(RepoRoot, SelectedFile.DisplayPath);
-        EditorRequested?.Invoke(absolute);
+
+        // Load the editor command fresh so a change made in the settings dialog is honored.
+        string? template = _settings.Load().ExternalEditorCommand;
+        if (!_editorLauncher.TryOpen(template, absolute))
+        {
+            StatusMessage = $"Couldn't open '{SelectedFile.DisplayPath}' in an external editor.";
+        }
     }
 }

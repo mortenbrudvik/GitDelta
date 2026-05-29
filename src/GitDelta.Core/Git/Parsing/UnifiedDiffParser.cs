@@ -124,23 +124,39 @@ public static class UnifiedDiffParser
             return null;
         }
 
-        var (oldStart, oldCount) = ParseRange(parts[0]); // leading '-'
-        var (newStart, newCount) = ParseRange(parts[1]); // leading '+'
-        return (oldStart, oldCount, newStart, newCount);
+        var oldRange = ParseRange(parts[0]); // leading '-'
+        var newRange = ParseRange(parts[1]); // leading '+'
+        if (oldRange is null || newRange is null)
+        {
+            // Malformed (non-numeric) range token — treat the whole header as unparseable.
+            return null;
+        }
+
+        return (oldRange.Value.Start, oldRange.Value.Count, newRange.Value.Start, newRange.Value.Count);
     }
 
-    private static (int Start, int Count) ParseRange(string token)
+    private static (int Start, int Count)? ParseRange(string token)
     {
-        // token is like "-12,5" or "+3" — strip the sign, split on ','.
+        // token is like "-12,5" or "+3" — strip the sign, split on ','. A non-numeric token
+        // (unexpected git format/locale) yields null so the caller skips the hunk rather than
+        // throwing FormatException out of the parser.
+        if (token.Length < 2)
+        {
+            return null;
+        }
+
         var body = token[1..];
         var comma = body.IndexOf(',');
         if (comma < 0)
         {
-            return (int.Parse(body, CultureInfo.InvariantCulture), 1);
+            return int.TryParse(body, NumberStyles.Integer, CultureInfo.InvariantCulture, out var only)
+                ? (only, 1)
+                : null;
         }
 
-        var start = int.Parse(body[..comma], CultureInfo.InvariantCulture);
-        var count = int.Parse(body[(comma + 1)..], CultureInfo.InvariantCulture);
-        return (start, count);
+        return int.TryParse(body[..comma], NumberStyles.Integer, CultureInfo.InvariantCulture, out var start)
+            && int.TryParse(body[(comma + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var count)
+            ? (start, count)
+            : null;
     }
 }

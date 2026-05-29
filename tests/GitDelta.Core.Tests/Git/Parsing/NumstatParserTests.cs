@@ -91,6 +91,21 @@ public class NumstatParserTests
     }
 
     [Fact]
+    public void Parse_NonNumericCounts_TreatedAsNullWithoutThrowing()
+    {
+        // A malformed count must not crash the parser; keep the entry with unknown counts.
+        var stdout = Bytes("abc" + TAB + "5" + TAB + "src/app.cs" + NUL);
+
+        var entries = NumstatParser.Parse(stdout);
+
+        entries.Count.ShouldBe(1);
+        entries[0].Path.ShouldBe("src/app.cs");
+        entries[0].Added.ShouldBeNull();
+        entries[0].Deleted.ShouldBe(5);
+        entries[0].IsBinary.ShouldBeFalse();
+    }
+
+    [Fact]
     public void Parse_EmptyOutput_ReturnsEmptyList()
     {
         NumstatParser.Parse([]).ShouldBeEmpty();

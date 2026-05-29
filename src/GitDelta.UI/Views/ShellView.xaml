@@ -348,6 +348,19 @@
         VerticalAlignment="Center"
         IsIndeterminate="True"
         Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+    <!-- Status/error overlay: git not installed, git too old, or a failed git command.
+         Spans all panes and floats at the top so the failure is never silent. -->
+    <ui:InfoBar
+        Grid.Column="0"
+        Grid.ColumnSpan="5"
+        Margin="16,12"
+        VerticalAlignment="Top"
+        IsClosable="True"
+        IsOpen="{Binding HasStatusMessage}"
+        Message="{Binding StatusMessage}"
+        Severity="Error"
+        Title="Git" />
   </Grid>
 
 </UserControl>

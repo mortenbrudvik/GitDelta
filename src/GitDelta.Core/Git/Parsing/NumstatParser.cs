@@ -89,6 +89,8 @@ public static class NumstatParser
         return entries;
     }
 
-    private static int ParseCount(string token)
-        => int.Parse(token, CultureInfo.InvariantCulture);
+    private static int? ParseCount(string token)
+        => int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null; // malformed count: report as unknown rather than throwing.
 }

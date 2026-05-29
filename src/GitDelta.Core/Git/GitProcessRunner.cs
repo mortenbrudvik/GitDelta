@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 
@@ -7,14 +8,33 @@ namespace GitDelta.Core.Git;
 /// Runs the git CLI as a child process. stdout is captured as raw bytes (so NUL/0x1f
 /// framing and non-UTF-8 paths survive), stderr is decoded as UTF-8. Every invocation
 /// is prefixed with read-only/quoting flags. Cancellation kills the process tree.
+/// git is resolved from PATH; availability/version is validated separately by
+/// <see cref="CliGitReader.CheckGitAsync"/>.
 /// </summary>
 public sealed class GitProcessRunner : IGitProcessRunner
 {
+    /// <summary>
+    /// Exit code reported when the git process could not even be started (e.g. git is
+    /// not on PATH). Distinct from any real git exit code; only <see cref="GitResult.Success"/>
+    /// (== 0) matters to callers, so any non-zero sentinel signals failure.
+    /// </summary>
+    private const int ProcessNotStartedExitCode = -1;
+
+    private readonly string _gitExecutable;
+
+    /// <param name="gitExecutable">
+    /// Executable to launch; defaults to "git" (resolved from PATH). Overridable as a test seam.
+    /// </param>
+    public GitProcessRunner(string gitExecutable = "git")
+    {
+        _gitExecutable = gitExecutable;
+    }
+
     public async Task<GitResult> RunAsync(string workingDirectory, IReadOnlyList<string> args, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
-        var psi = new ProcessStartInfo("git")
+        var psi = new ProcessStartInfo(_gitExecutable)
         {
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
@@ -34,7 +54,17 @@ public sealed class GitProcessRunner : IGitProcessRunner
         }
 
         using var process = new Process { StartInfo = psi };
-        process.Start();
+        try
+        {
+            process.Start();
+        }
+        catch (Win32Exception ex)
+        {
+            // git could not be launched (most commonly: not on PATH). Surface this as a
+            // failed result rather than letting the Win32Exception escape — CheckGitAsync
+            // turns it into "git not installed" and other callers can report the failure.
+            return new GitResult(ProcessNotStartedExitCode, Array.Empty<byte>(), ex.Message);
+        }
 
         using var stdOutBuffer = new MemoryStream();
 

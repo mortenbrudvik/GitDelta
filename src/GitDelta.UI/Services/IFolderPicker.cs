@@ -3,7 +3,7 @@ namespace GitDelta.UI.Services;
 /// <summary>
 /// Abstraction over the OS folder-picker dialog so ViewModels that open a
 /// repository remain unit-testable. The WPF implementation is registered in
-/// the UI Autofac module (Phase 9).
+/// the UI Autofac module.
 /// </summary>
 public interface IFolderPicker
 {

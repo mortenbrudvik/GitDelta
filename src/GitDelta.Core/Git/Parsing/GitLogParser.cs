@@ -43,6 +43,13 @@ public static class GitLogParser
                 continue;
             }
 
+            // Defensive: a malformed author/commit date (unexpected git config/locale) skips
+            // the record rather than throwing FormatException out of history loading.
+            if (!TryParseDate(fields[4], out var authorDate) || !TryParseDate(fields[7], out var commitDate))
+            {
+                continue;
+            }
+
             var sha = fields[0];
             var parents = ParseParents(fields[1]);
 
@@ -52,10 +59,10 @@ public static class GitLogParser
                 Parents: parents,
                 AuthorName: fields[2],
                 AuthorEmail: fields[3],
-                AuthorDate: ParseDate(fields[4]),
+                AuthorDate: authorDate,
                 CommitterName: fields[5],
                 CommitterEmail: fields[6],
-                CommitDate: ParseDate(fields[7]),
+                CommitDate: commitDate,
                 Subject: fields[8],
                 Body: fields[9]));
         }
@@ -75,6 +82,6 @@ public static class GitLogParser
 
     private static string ShortSha(string sha) => sha.Length <= 7 ? sha : sha[..7];
 
-    private static DateTimeOffset ParseDate(string value)
-        => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+    private static bool TryParseDate(string value, out DateTimeOffset date)
+        => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out date);
 }
