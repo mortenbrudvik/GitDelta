@@ -136,7 +136,38 @@ public partial class DiffView : UserControl
         ConfigureEditor(LeftEditor, _leftBg, _leftBar, _leftIntra);
         ConfigureEditor(RightEditor, _rightBg, _rightBar, _rightIntra);
         ConfigureEditor(UnifiedEditor, _unifiedBg, _unifiedBar, _unifiedIntra);
+        HookSplitScrollSync();
         _editorsConfigured = true;
+    }
+
+    private bool _syncingScroll;
+
+    private void HookSplitScrollSync()
+    {
+        LeftEditor.TextArea.TextView.ScrollOffsetChanged += (_, _) =>
+            MirrorScroll(LeftEditor, RightEditor);
+        RightEditor.TextArea.TextView.ScrollOffsetChanged += (_, _) =>
+            MirrorScroll(RightEditor, LeftEditor);
+    }
+
+    private void MirrorScroll(TextEditor source, TextEditor target)
+    {
+        if (_syncingScroll || ViewMode != DiffViewMode.SideBySide)
+        {
+            return;
+        }
+
+        _syncingScroll = true;
+        try
+        {
+            Vector offset = source.TextArea.TextView.ScrollOffset;
+            target.ScrollToVerticalOffset(offset.Y);
+            target.ScrollToHorizontalOffset(offset.X);
+        }
+        finally
+        {
+            _syncingScroll = false;
+        }
     }
 
     private static void ConfigureEditor(
