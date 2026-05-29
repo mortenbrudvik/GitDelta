@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
-using GitDelta.Core.Models;
 using GitDelta.Core.Settings;
 using GitDelta.UI.Services;
 using GitDelta.UI.ViewModels;
@@ -139,54 +139,106 @@ public partial class MainWindow : FluentWindow, IWindow
 
     private static void TryLaunchEditor(string commandTemplate, string filePath)
     {
-        // Substitute {file} placeholder; fall back to appending the path.
-        var expanded = commandTemplate.Contains("{file}", StringComparison.OrdinalIgnoreCase)
+        // Substitute {file} placeholder; if absent, append the path as a quoted arg.
+        var hasPlaceholder = commandTemplate.Contains("{file}", StringComparison.OrdinalIgnoreCase);
+        var expanded = hasPlaceholder
             ? commandTemplate.Replace("{file}", filePath, StringComparison.OrdinalIgnoreCase)
             : $"{commandTemplate} \"{filePath}\"";
 
-        // Split on the first space to get exe + args.
-        var spaceIndex = expanded.IndexOf(' ');
-        string exe, args;
-        if (spaceIndex < 0)
+        // Parse respecting quotes so editor paths with spaces (e.g.
+        // "C:\Program Files\Microsoft VS Code\Code.exe -g {file}") survive.
+        var argv = SplitCommandLine(expanded);
+        if (argv.Length > 0)
         {
-            exe = expanded;
-            args = string.Empty;
+            var fileName = argv[0];
+            var arguments = string.Join(' ', argv.Skip(1).Select(QuoteIfNeeded));
+
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                });
+                return;
+            }
+            catch (Exception)
+            {
+                // Fall through to the OS-default fallback below.
+            }
         }
-        else
+
+        // Fall back to OS shell open if the custom command failed or could not be parsed.
+        try
         {
-            exe = expanded[..spaceIndex];
-            args = expanded[(spaceIndex + 1)..];
+            Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            // Silent ignore — nothing more we can do without a notification stack.
+        }
+    }
+
+    /// <summary>
+    /// Splits a command line into argv respecting double-quote grouping, using the
+    /// Win32 <c>CommandLineToArgvW</c> shell parser (same rules as the OS).
+    /// </summary>
+    private static string[] SplitCommandLine(string commandLine)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine))
+        {
+            return [];
+        }
+
+        var argvPtr = CommandLineToArgvW(commandLine, out var argc);
+        if (argvPtr == nint.Zero)
+        {
+            return [];
         }
 
         try
         {
-            Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = true });
+            var args = new string[argc];
+            for (var i = 0; i < argc; i++)
+            {
+                var strPtr = Marshal.ReadIntPtr(argvPtr, i * nint.Size);
+                args[i] = Marshal.PtrToStringUni(strPtr) ?? string.Empty;
+            }
+
+            return args;
         }
-        catch (Exception)
+        finally
         {
-            // Fall back to OS shell open if the custom command fails.
-            try
-            {
-                Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
-            }
-            catch (Exception)
-            {
-                // Silent ignore.
-            }
+            LocalFree(argvPtr);
         }
     }
+
+    private static string QuoteIfNeeded(string arg) =>
+        arg.Contains(' ', StringComparison.Ordinal) && !arg.StartsWith('"')
+            ? $"\"{arg}\""
+            : arg;
+
+    [DllImport("shell32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern nint CommandLineToArgvW(string lpCmdLine, out int pNumArgs);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint LocalFree(nint hMem);
 
     // ── Window size persistence ────────────────────────────────────────────────
 
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
         var settings = _settingsStore.Load();
-        if (settings.WindowWidth >= MinWidth)
+
+        // Ignore non-finite (NaN/Infinity) or below-minimum persisted sizes so a
+        // corrupt stored value cannot break startup.
+        if (double.IsFinite(settings.WindowWidth) && settings.WindowWidth >= MinWidth)
         {
             Width = settings.WindowWidth;
         }
 
-        if (settings.WindowHeight >= MinHeight)
+        if (double.IsFinite(settings.WindowHeight) && settings.WindowHeight >= MinHeight)
         {
             Height = settings.WindowHeight;
         }
@@ -194,6 +246,15 @@ public partial class MainWindow : FluentWindow, IWindow
 
     private void OnWindowClosing(object? sender, CancelEventArgs e)
     {
+        // Width/Height are Double.NaN when Maximized/Minimized, and System.Text.Json
+        // throws on NaN. Only persist a real size captured in the Normal state.
+        if (WindowState != WindowState.Normal
+            || !double.IsFinite(Width)
+            || !double.IsFinite(Height))
+        {
+            return;
+        }
+
         var current = _settingsStore.Load();
         _settingsStore.Save(current with
         {

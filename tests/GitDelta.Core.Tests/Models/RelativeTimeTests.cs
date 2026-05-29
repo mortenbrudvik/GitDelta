@@ -19,6 +19,8 @@ public sealed class RelativeTimeTests
     [InlineData(172800, "2 days ago")]
     [InlineData(604800, "last week")]
     [InlineData(1209600, "2 weeks ago")]
+    [InlineData(2592000, "last month")]    // 30 days — singular month boundary
+    [InlineData(31536000, "last year")]    // 365 days — singular year boundary
     public void Format_ReturnsExpectedPhrase(int secondsAgo, string expected)
     {
         var when = Now.AddSeconds(-secondsAgo);

@@ -108,14 +108,17 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private double _filesPaneWidth;
 
-    partial void OnHistoryPaneWidthChanged(double value) => PersistPaneWidths();
-
-    partial void OnFilesPaneWidthChanged(double value) => PersistPaneWidths();
-
-    private void PersistPaneWidths()
+    /// <summary>
+    /// Persists both pane widths atomically in a single Load+Save. Called once per
+    /// GridSplitter drag (not from the property setters) so one drag = one round-trip.
+    /// </summary>
+    public void PersistPaneWidths(double historyWidth, double filesWidth)
     {
+        HistoryPaneWidth = historyWidth;
+        FilesPaneWidth = filesWidth;
+
         var current = _settings.Load();
-        _settings.Save(current with { HistoryPaneWidth = HistoryPaneWidth, FilesPaneWidth = FilesPaneWidth });
+        _settings.Save(current with { HistoryPaneWidth = historyWidth, FilesPaneWidth = filesWidth });
     }
 
     public WorkingTreeRowViewModel WorkingTreeRow { get; }
@@ -306,7 +309,11 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         DiffSpec? spec = BuildSpecFromSelection();
         if (spec is null)
         {
+            // Nothing selected: clear the file list and the diff so no stale
+            // content remains visible.
             ChangedFiles.Clear();
+            SelectedFile = null;
+            Diff.FileDiff = null;
             return;
         }
 
@@ -349,16 +356,17 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Called by the ShellView code-behind when the history ListView's multi-select
     /// changes. Pushes the selection into <see cref="SelectedCommits"/> and
-    /// recomputes the comparison.
+    /// recomputes the comparison. When commits are selected, the pinned working-tree
+    /// row is deselected; when the selection is empty the comparison is recomputed
+    /// (which clears the file list and diff unless the working-tree row is selected).
     /// </summary>
     public void OnHistorySelectionChanged()
     {
-        if (SelectedCommits.Count == 0)
+        if (SelectedCommits.Count > 0)
         {
-            return;
+            WorkingTreeRow.IsSelected = false;
         }
 
-        WorkingTreeRow.IsSelected = false;
         _ = RecomputeComparisonAsync(CancellationToken.None);
     }
 

@@ -66,14 +66,8 @@ public partial class ShellView : UserControl
 
     private void OnGridSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
     {
-        var vm = ViewModel;
-        if (vm is null)
-        {
-            return;
-        }
-
-        vm.HistoryPaneWidth = HistoryColumn.Width.Value;
-        vm.FilesPaneWidth = FilesColumn.Width.Value;
+        // Persist both widths atomically in a single Load+Save per drag.
+        ViewModel?.PersistPaneWidths(HistoryColumn.Width.Value, FilesColumn.Width.Value);
     }
 
     // ── Changed-files grouping toggle ───────────────────────────────────────────

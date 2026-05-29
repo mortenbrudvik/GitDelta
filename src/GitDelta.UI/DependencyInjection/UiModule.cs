@@ -1,6 +1,5 @@
 using Autofac;
 using GitDelta.Core.DependencyInjection;
-using GitDelta.Core.Settings;
 using GitDelta.UI.Services;
 using GitDelta.UI.ViewModels;
 using GitDelta.UI.Views;
@@ -27,12 +26,11 @@ public sealed class UiModule : Module
 
         // ViewModels — InstancePerDependency (transient). Func<T> factories are
         // auto-provided by Autofac for the container/child-VM creation patterns.
+        // SettingsViewModel is not registered: MainWindow constructs it directly
+        // with the freshly loaded AppSettings each time the dialog opens.
         builder.RegisterType<MainWindowViewModel>().AsSelf().InstancePerDependency();
         builder.RegisterType<StartViewModel>().AsSelf().InstancePerDependency();
         builder.RegisterType<ShellViewModel>().AsSelf().InstancePerDependency();
-        // SettingsViewModel is instantiated per-use with the current loaded AppSettings.
-        builder.Register(c => new SettingsViewModel(c.Resolve<ISettingsStore>().Load()))
-            .AsSelf().InstancePerDependency();
 
         // Main window — SingleInstance.
         builder.RegisterType<MainWindow>()
