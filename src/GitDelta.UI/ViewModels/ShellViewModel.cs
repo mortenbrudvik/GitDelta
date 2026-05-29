@@ -110,6 +110,14 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private FileRowViewModel? _selectedFile;
 
+    partial void OnSelectedFileChanged(FileRowViewModel? value)
+    {
+        if (value is not null)
+        {
+            _ = ShowFileDiffAsync(value, CancellationToken.None);
+        }
+    }
+
     public DiffDocumentViewModel Diff { get; }
 
     /// <summary>
@@ -317,6 +325,22 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Called by the ShellView code-behind when the history ListView's multi-select
+    /// changes. Pushes the selection into <see cref="SelectedCommits"/> and
+    /// recomputes the comparison.
+    /// </summary>
+    public void OnHistorySelectionChanged()
+    {
+        if (SelectedCommits.Count == 0)
+        {
+            return;
+        }
+
+        WorkingTreeRow.IsSelected = false;
+        _ = RecomputeComparisonAsync(CancellationToken.None);
     }
 
     /// <summary>Raised when the user asks to open a different repository.</summary>

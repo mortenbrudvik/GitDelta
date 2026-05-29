@@ -48,7 +48,7 @@
           <!-- Pinned working-tree row -->
           <ToggleButton
               Grid.Row="0"
-              Margin="6,6,6,2"
+              Margin="8,8,8,4"
               HorizontalContentAlignment="Left"
               Command="{Binding SelectWorkingTreeCommand}"
               IsChecked="{Binding WorkingTreeRow.IsSelected, Mode=OneWay}">
@@ -61,18 +61,28 @@
             </StackPanel>
           </ToggleButton>
 
-          <ListBox
+          <ListView
+              x:Name="HistoryList"
               Grid.Row="1"
               Margin="2"
               Background="Transparent"
               BorderThickness="0"
               ItemsSource="{Binding History}"
+              ScrollViewer.CanContentScroll="True"
+              ScrollViewer.ScrollChanged="HistoryList_ScrollChanged"
+              SelectionChanged="HistoryList_SelectionChanged"
               SelectionMode="Extended"
               VirtualizingPanel.IsVirtualizing="True"
               VirtualizingPanel.VirtualizationMode="Recycling">
-            <ListBox.ItemTemplate>
+            <ListView.ItemContainerStyle>
+              <Style TargetType="ListViewItem">
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Padding" Value="4,4" />
+              </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
               <DataTemplate>
-                <StackPanel Margin="4,4">
+                <StackPanel Margin="4,2">
                   <TextBlock
                       FontWeight="SemiBold"
                       Text="{Binding Subject}"
@@ -92,8 +102,8 @@
                   </StackPanel>
                 </StackPanel>
               </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
+            </ListView.ItemTemplate>
+          </ListView>
         </Grid>
       </Border>
     </Grid>
@@ -191,7 +201,8 @@
         <RowDefinition Height="*" />
       </Grid.RowDefinitions>
 
-      <!-- Diff toolbar: toggles bound to the Diff document VM. -->
+      <!-- Diff toolbar: toggles bound to the Diff document VM;
+           Find/Prev/Next/Copy call DiffControl public methods from code-behind. -->
       <StackPanel
           Grid.Row="0"
           Margin="8,0,0,8"
@@ -213,6 +224,38 @@
             Command="{Binding Diff.ToggleWhitespaceCommand}"
             Content="Whitespace"
             Icon="{ui:SymbolIcon TextParagraph24}" />
+        <Separator Margin="8,2" />
+        <ui:Button
+            Margin="0,0,0,0"
+            Padding="8,4"
+            Click="OnFind"
+            Content="Find"
+            Icon="{ui:SymbolIcon Search24}" />
+        <ui:Button
+            Margin="8,0,0,0"
+            Padding="8,4"
+            Click="OnPreviousChange"
+            Content="Prev"
+            Icon="{ui:SymbolIcon ChevronUp24}" />
+        <ui:Button
+            Margin="8,0,0,0"
+            Padding="8,4"
+            Click="OnNextChange"
+            Content="Next"
+            Icon="{ui:SymbolIcon ChevronDown24}" />
+        <Separator Margin="8,2" />
+        <ui:Button
+            Margin="0,0,0,0"
+            Padding="8,4"
+            Click="OnCopy"
+            Content="Copy"
+            Icon="{ui:SymbolIcon Copy24}" />
+        <ui:Button
+            Margin="8,0,0,0"
+            Padding="8,4"
+            Command="{Binding OpenFileInEditorCommand}"
+            Content="Open"
+            Icon="{ui:SymbolIcon Open24}" />
       </StackPanel>
 
       <Border
