@@ -2,8 +2,10 @@ using System.Windows;
 using System.Windows.Controls;
 using GitDelta.Core.Models;
 using GitDelta.UI.Controls.Diff;
+using GitDelta.UI.Controls.Diff.Syntax;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.Rendering;
 
 namespace GitDelta.UI.Controls;
 
@@ -205,7 +207,80 @@ public partial class DiffView : UserControl
         ((DiffView)d).ApplyDisplayOptions();
     }
 
-    private static void OnSyntaxChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) { }
+    private static void OnSyntaxChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        ((DiffView)d).ApplySyntax();
+    }
+
+    private TextMateThemeProvider? _themeProvider;
+    private readonly Dictionary<TextEditor, TextMateColorizer> _syntaxColorizers = new();
+
+    private void ApplySyntax()
+    {
+        ConfigureEditorsOnce();
+        ClearSyntax();
+
+        string? langId = SyntaxLanguageId;
+        FileDiff? diff = FileDiff;
+        if (langId is null || diff is null || diff.IsBinary)
+        {
+            return;
+        }
+
+        _themeProvider = new TextMateThemeProvider(IsDarkTheme);
+
+        foreach (TextEditor editor in new[] { LeftEditor, RightEditor, UnifiedEditor })
+        {
+            int lineCount = editor.Document.LineCount;
+            int chars = editor.Document.TextLength;
+            if (!SyntaxGuard.ShouldTokenize(langId, lineCount, chars, diff.IsBinary))
+            {
+                continue;
+            }
+
+            TextMateSharp.Grammars.IGrammar? grammar = _themeProvider.LoadGrammar(langId);
+            if (grammar is null)
+            {
+                continue;
+            }
+
+            var colorizer = new TextMateColorizer(_themeProvider, grammar);
+
+            // Insert syntax BEFORE the intra-line colorizer so diff tints layer on top.
+            IList<IVisualLineTransformer> transformers = editor.TextArea.TextView.LineTransformers;
+            int intraIndex = IndexOfIntra(editor, transformers);
+            if (intraIndex >= 0)
+            {
+                transformers.Insert(intraIndex, colorizer);
+            }
+            else
+            {
+                transformers.Add(colorizer);
+            }
+
+            _syntaxColorizers[editor] = colorizer;
+            editor.TextArea.TextView.Redraw();
+        }
+    }
+
+    private int IndexOfIntra(TextEditor editor, IList<IVisualLineTransformer> transformers)
+    {
+        IntraLineColorizer intra = editor == LeftEditor ? _leftIntra
+            : editor == RightEditor ? _rightIntra
+            : _unifiedIntra;
+        return transformers.IndexOf(intra);
+    }
+
+    private void ClearSyntax()
+    {
+        foreach ((TextEditor editor, TextMateColorizer colorizer) in _syntaxColorizers)
+        {
+            editor.TextArea.TextView.LineTransformers.Remove(colorizer);
+            editor.TextArea.TextView.Redraw();
+        }
+
+        _syntaxColorizers.Clear();
+    }
 
     private void Rebuild()
     {
@@ -253,6 +328,9 @@ public partial class DiffView : UserControl
             PlaceholderState.VerticalAlignment = VerticalAlignment.Bottom;
             PlaceholderState.Text = "Diff truncated — file too large to show in full";
         }
+
+        // Re-apply syntax so a freshly built document gets highlighted.
+        ApplySyntax();
     }
 
     private static void LoadSide(
