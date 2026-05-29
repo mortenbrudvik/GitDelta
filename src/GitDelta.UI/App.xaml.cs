@@ -21,14 +21,27 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Route args FIRST — before building the host or showing any window.
-        // e.Args excludes the exe path; cwd is the launching directory.
+        // Route args ONCE — before building the host or showing any window.
+        // e.Args excludes the exe path; cwd is the launching directory. This is the
+        // single source of truth; the host receives it via DI (no re-parse).
         var action = ArgRouter.Route(e.Args, Directory.GetCurrentDirectory());
 
         // Console-only fast paths: write to the parent terminal and exit without a window.
         if (action.Kind is LaunchActionKind.PrintHelp or LaunchActionKind.PrintVersion)
         {
-            RunConsoleMode(action);
+            // Broken pipe (e.g. `gitdelta --version | head -1`) or a missing console
+            // surfaces as IOException from the AutoFlush writer; swallow it so the
+            // process exits cleanly instead of raising a WER crash dialog. This runs
+            // before the global handlers are wired, so it must guard itself.
+            try
+            {
+                RunConsoleMode(action);
+            }
+            catch (IOException)
+            {
+                // Broken pipe / no console — nothing to do but exit cleanly.
+            }
+
             Shutdown();
             return;
         }
@@ -48,6 +61,9 @@ public partial class App : Application
             })
             .ConfigureServices(services =>
             {
+                // Hand the already-parsed launch action to the host so
+                // ApplicationHostService consumes it instead of re-parsing.
+                services.AddSingleton(action);
                 services.AddHostedService<ApplicationHostService>();
             })
             .Build();

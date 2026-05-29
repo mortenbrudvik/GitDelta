@@ -12,7 +12,9 @@ internal static partial class NativeConsole
 {
     private const int ATTACH_PARENT_PROCESS = -1;
 
+    private const uint GENERIC_READ = 0x80000000;
     private const uint GENERIC_WRITE = 0x40000000;
+    private const uint FILE_SHARE_READ = 0x00000001;
     private const uint FILE_SHARE_WRITE = 0x00000002;
     private const uint OPEN_EXISTING = 3;
 
@@ -20,6 +22,13 @@ internal static partial class NativeConsole
     private const uint FILE_TYPE_CHAR = 0x0002;
 
     private const int STD_OUTPUT_HANDLE = -11;
+
+    /// <summary>
+    /// True only when we called <c>AttachConsole</c> against a real console and
+    /// must balance it with <c>FreeConsole</c> on <see cref="Detach"/>. Stays
+    /// false in the redirected/pipe case (we never attach there).
+    /// </summary>
+    private static bool _attachedToRealConsole;
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -51,13 +60,13 @@ internal static partial class NativeConsole
     /// </summary>
     public static bool TryAttachToParentConsole()
     {
-        // If stdout is already redirected (file/pipe), the existing stream is valid —
-        // we must NOT replace it, or redirection breaks. Detect that first.
+        // If stdout is already redirected (file/pipe), the existing stream is valid
+        // and the OS routes it correctly with no attach. We must NOT call
+        // AttachConsole here — doing so would later require a FreeConsole that can
+        // dislocate the parent shell's prompt — nor reopen CONOUT$, which would
+        // break redirection. The redirected handle already routes correctly.
         if (IsStdOutRedirected())
         {
-            // Still attach so Console.Out flushes to the right place when not redirected,
-            // but the redirected handle already routes correctly; nothing more to do.
-            AttachConsole(ATTACH_PARENT_PROCESS);
             return true;
         }
 
@@ -67,10 +76,30 @@ internal static partial class NativeConsole
             return false;
         }
 
-        return ReopenStdOutToConsole();
+        if (!ReopenStdOutToConsole())
+        {
+            // Attached but could not reopen CONOUT$: balance the attach so the
+            // process does not exit still-attached to the parent console.
+            FreeConsole();
+            return false;
+        }
+
+        _attachedToRealConsole = true;
+        return true;
     }
 
-    public static void Detach() => FreeConsole();
+    /// <summary>
+    /// Detaches from the parent console, but only if we actually attached to a
+    /// real console (never in the redirected/pipe case, where we never attached).
+    /// </summary>
+    public static void Detach()
+    {
+        if (_attachedToRealConsole)
+        {
+            FreeConsole();
+            _attachedToRealConsole = false;
+        }
+    }
 
     private static bool IsStdOutRedirected()
     {
@@ -87,10 +116,14 @@ internal static partial class NativeConsole
 
     private static bool ReopenStdOutToConsole()
     {
+        // Match the .NET runtime's ConsolePal pattern: GENERIC_READ | GENERIC_WRITE
+        // with FILE_SHARE_READ | FILE_SHARE_WRITE. conhost holds CONOUT$ open with
+        // read access, so without FILE_SHARE_READ this can fail with
+        // ERROR_SHARING_VIOLATION → invalid handle → no terminal output.
         var handle = CreateFile(
             "CONOUT$",
-            GENERIC_WRITE,
-            FILE_SHARE_WRITE,
+            GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
             nint.Zero,
             OPEN_EXISTING,
             0,

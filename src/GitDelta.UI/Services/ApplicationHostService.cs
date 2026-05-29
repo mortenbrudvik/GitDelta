@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using GitDelta.Core.Cli;
 using GitDelta.UI.ViewModels;
@@ -13,15 +12,18 @@ public sealed class ApplicationHostService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IThemeService _themeService;
+    private readonly LaunchAction _launchAction;
     private readonly ILogger<ApplicationHostService> _logger;
 
     public ApplicationHostService(
         IServiceProvider serviceProvider,
         IThemeService themeService,
+        LaunchAction launchAction,
         ILogger<ApplicationHostService> logger)
     {
         _serviceProvider = serviceProvider;
         _themeService = themeService;
+        _launchAction = launchAction;
         _logger = logger;
     }
 
@@ -43,9 +45,9 @@ public sealed class ApplicationHostService : IHostedService
         {
             try
             {
-                var cliArgs = Environment.GetCommandLineArgs().Skip(1).ToArray();
-                var action = ArgRouter.Route(cliArgs, Directory.GetCurrentDirectory());
-                await viewModel.InitializeAsync(action, cancellationToken);
+                // The launch action was parsed once in App.OnStartup and injected here;
+                // no re-parse of the command line.
+                await viewModel.InitializeAsync(_launchAction, cancellationToken);
             }
             catch (Exception ex)
             {
