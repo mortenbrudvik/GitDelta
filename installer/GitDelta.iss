@@ -32,9 +32,9 @@ DefaultGroupName={#AppName}
 ChangesEnvironment=yes
 ; Per-user uninstaller / Add-Remove-Programs registration (HKCU).
 UninstallDisplayName={#AppName}
-; NOTE: Uncomment SetupIconFile and UninstallDisplayIcon once src/GitDelta.UI/Assets/gitdelta.ico exists.
-; SetupIconFile=..\src\GitDelta.UI\Assets\gitdelta.ico
-; UninstallDisplayIcon={app}\{#AppExeName}
+; Installer icon, and Add/Remove-Programs icon (taken from the installed exe, which embeds gitdelta.ico).
+SetupIconFile=..\src\GitDelta.UI\Assets\gitdelta.ico
+UninstallDisplayIcon={app}\{#AppExeName}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern

@@ -7,6 +7,7 @@
     <RootNamespace>GitDelta.UI</RootNamespace>
     <AssemblyName>gitdelta</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\gitdelta.ico</ApplicationIcon>
     <!-- Required by [LibraryImport] source-generated P/Invoke (NativeConsole). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
