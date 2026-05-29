@@ -6,7 +6,7 @@
 #define AppExeName     "gitdelta.exe"
 #define AppPublisher   "Morten Brudvik"
 #define AppUrl         "https://github.com/mortenbrudvik/GitDelta"
-#define AppVersion     "1.0.0"
+#define AppVersion     "0.1.0"
 ; The exe produced by build/publish.ps1 (run from repo root: pwsh -File build/publish.ps1)
 #define PublishDir     "..\publish"
 ; Bundled .NET Desktop Runtime installer (fetched by installer\fetch-runtime.ps1).
@@ -139,7 +139,11 @@ begin
     end;
   until PathList = '';
 
-  RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentKey, 'Path', Rebuilt);
+  if Rebuilt = '' then
+    { GitDelta was the only entry — delete the value rather than leaving an empty Path. }
+    RegDeleteValue(HKEY_CURRENT_USER, EnvironmentKey, 'Path')
+  else
+    RegWriteExpandStringValue(HKEY_CURRENT_USER, EnvironmentKey, 'Path', Rebuilt);
 end;
 
 { ---- .NET 10 Desktop Runtime detection ---- }

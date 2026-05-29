@@ -5,6 +5,10 @@ user profile) so runtime detection and the PATH broadcast are genuinely exercise
 
 ## A. Build artifacts (build machine)
 
+- [ ] **MANDATORY:** obtain the official .NET 10 Desktop Runtime (x64) **SHA-256** from
+      <https://dotnet.microsoft.com/download/dotnet/10.0> and pass it to the fetch script
+      (`pwsh -File installer/fetch-runtime.ps1 -ExpectedSha256 <hash>`) so the bundled
+      runtime is integrity-checked before it ships in the installer.
 - [ ] `pwsh -File build/publish.ps1` succeeds; `publish/gitdelta.exe` exists and is ~40–50 MB.
 - [ ] `publish/` contains no per-app managed `*.dll` siblings (single-file bundling confirmed).
 - [ ] `& publish/gitdelta.exe --version` prints the expected version and exits without a window.
@@ -46,7 +50,21 @@ user profile) so runtime detection and the PATH broadcast are genuinely exercise
 - [ ] Open a new terminal: `gitdelta` is no longer found (PATH entry removed).
       Confirm: `(Get-ItemProperty 'HKCU:\Environment' Path).Path` no longer contains the GitDelta dir.
 
-## F. Git-missing path (optional, test VM without Git for Windows)
+## F. Per-user .NET runtime (test VM with a USER-scoped .NET 10 Desktop Runtime install)
+
+The installer's runtime probe only checks the machine-wide location
+(`{commonpf64}\dotnet\shared\Microsoft.WindowsDesktop.App\10.*`). A runtime installed to the
+**per-user** location (`%LOCALAPPDATA%\Microsoft\dotnet`) is NOT detected, so the bundled
+runtime installer will run even though a usable runtime is already present.
+
+- [ ] Install the .NET 10 Desktop Runtime per-user only (`%LOCALAPPDATA%\Microsoft\dotnet`),
+      then run the GitDelta installer.
+- [ ] Confirm the resulting behavior is acceptable: the bundled runtime runs unnecessarily but
+      the install still completes and `gitdelta` works. (If this becomes a real complaint,
+      extend `IsDotNet10DesktopRuntimeInstalled` in `GitDelta.iss` to also probe the per-user
+      location and `dotnet --list-runtimes`.)
+
+## G. Git-missing path (optional, test VM without Git for Windows)
 
 - [ ] Launch GitDelta with git absent — the actionable "Git not installed" screen appears with a
       link to Git for Windows (per the spec's startup git detection).

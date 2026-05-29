@@ -97,7 +97,7 @@ dotnet test  GitDelta.sln
 ### Produce the single-file gitdelta.exe
 
 ```powershell
-# Outputs publish\gitdelta.exe (~43 MB, framework-dependent single file).
+# Outputs publish\gitdelta.exe (~40-50 MB, framework-dependent single file).
 pwsh -File build/publish.ps1
 
 # Or equivalently, directly:

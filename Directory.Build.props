@@ -1,5 +1,9 @@
 <Project>
   <PropertyGroup>
+    <!-- Single source of truth for the product version. Drives AssemblyVersion,
+         FileVersion, and InformationalVersion for all projects, so the gitdelta version
+         command reports "gitdelta 0.1.0". Keep in sync with version.json and installer AppVersion. -->
+    <Version>0.1.0</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>14</LangVersion>
