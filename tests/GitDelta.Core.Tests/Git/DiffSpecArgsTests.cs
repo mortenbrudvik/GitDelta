@@ -43,4 +43,12 @@ public class DiffSpecArgsTests
 
         args.ShouldBe(["base111", "target222"]);
     }
+
+    [Fact]
+    public void ToDiffArgs_TwoCommits_IgnoresIsRootCommitFlag()
+    {
+        var args = DiffSpecArgs.ToDiffArgs(new DiffSpec.TwoCommits("base111", "target222"), isRootCommit: true);
+
+        args.ShouldBe(new[] { "base111", "target222" });
+    }
 }
