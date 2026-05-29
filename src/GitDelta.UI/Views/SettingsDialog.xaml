@@ -1,0 +1,39 @@
+<ui:ContentDialog x:Class="GitDelta.UI.Views.SettingsDialog"
+                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                  Title="Settings"
+                  PrimaryButtonText="Save"
+                  CloseButtonText="Cancel"
+                  DefaultButton="Primary">
+  <StackPanel MinWidth="360" Margin="0,8">
+
+    <TextBlock Text="Theme" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <ComboBox SelectedValue="{Binding Theme, Mode=TwoWay}" SelectedValuePath="Tag" Margin="0,0,0,12">
+      <ComboBoxItem Content="System" Tag="System" />
+      <ComboBoxItem Content="Light" Tag="Light" />
+      <ComboBoxItem Content="Dark" Tag="Dark" />
+    </ComboBox>
+
+    <TextBlock Text="Default diff view" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <ComboBox SelectedValue="{Binding DefaultDiffView, Mode=TwoWay}" SelectedValuePath="Tag" Margin="0,0,0,12">
+      <ComboBoxItem Content="Side by side" Tag="SideBySide" />
+      <ComboBoxItem Content="Unified" Tag="Unified" />
+    </ComboBox>
+
+    <TextBlock Text="Context lines" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <ui:NumberBox Value="{Binding ContextLines, Mode=TwoWay}" Minimum="0" Maximum="50"
+                  SpinButtonPlacementMode="Inline" Margin="0,0,0,12" />
+
+    <TextBlock Text="Tab size" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <ui:NumberBox Value="{Binding TabSize, Mode=TwoWay}" Minimum="1" Maximum="16"
+                  SpinButtonPlacementMode="Inline" Margin="0,0,0,12" />
+
+    <TextBlock Text="External editor command" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <ui:TextBox Text="{Binding ExternalEditorCommand, Mode=TwoWay}"
+                PlaceholderText="e.g. code -g {file}:{line}" Margin="0,0,0,12" />
+
+    <ui:ToggleSwitch Content="Syntax highlighting"
+                     IsChecked="{Binding SyntaxHighlighting, Mode=TwoWay}" />
+  </StackPanel>
+</ui:ContentDialog>

@@ -56,11 +56,15 @@
       </ui:TitleBar.Header>
     </ui:TitleBar>
 
-    <ContentControl
-        Grid.Row="1"
-        HorizontalContentAlignment="Stretch"
-        VerticalContentAlignment="Stretch"
-        Content="{Binding CurrentContent}" />
+    <Grid Grid.Row="1">
+      <ContentControl
+          HorizontalContentAlignment="Stretch"
+          VerticalContentAlignment="Stretch"
+          Content="{Binding CurrentContent}" />
+
+      <!-- ContentDialogHost must overlay the content for dialogs to display correctly -->
+      <ui:ContentDialogHost x:Name="RootContentDialogHost" />
+    </Grid>
   </Grid>
 
 </ui:FluentWindow>

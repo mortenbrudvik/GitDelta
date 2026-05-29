@@ -1,5 +1,6 @@
 using Autofac;
 using GitDelta.Core.DependencyInjection;
+using GitDelta.Core.Settings;
 using GitDelta.UI.Services;
 using GitDelta.UI.ViewModels;
 using GitDelta.UI.Views;
@@ -29,6 +30,9 @@ public sealed class UiModule : Module
         builder.RegisterType<MainWindowViewModel>().AsSelf().InstancePerDependency();
         builder.RegisterType<StartViewModel>().AsSelf().InstancePerDependency();
         builder.RegisterType<ShellViewModel>().AsSelf().InstancePerDependency();
+        // SettingsViewModel is instantiated per-use with the current loaded AppSettings.
+        builder.Register(c => new SettingsViewModel(c.Resolve<ISettingsStore>().Load()))
+            .AsSelf().InstancePerDependency();
 
         // Main window — SingleInstance.
         builder.RegisterType<MainWindow>()
