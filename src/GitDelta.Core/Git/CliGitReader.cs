@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using GitDelta.Core.Diff;
+using GitDelta.Core.Git.Parsing;
 using GitDelta.Core.Models;
 
 namespace GitDelta.Core.Git;
@@ -65,8 +66,29 @@ public sealed partial class CliGitReader : IGitReader
         return string.IsNullOrEmpty(top) ? null : top;
     }
 
-    public Task<IReadOnlyList<CommitInfo>> GetHistoryAsync(string repoRoot, int skip, int maxCount, CancellationToken ct) =>
-        throw new NotImplementedException();
+    public async Task<IReadOnlyList<CommitInfo>> GetHistoryAsync(
+        string repoRoot, int skip, int maxCount, CancellationToken ct)
+    {
+        const string pretty =
+            "--pretty=format:%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%cn%x1f%ce%x1f%cI%x1f%s%x1f%b";
+
+        var args = new[]
+        {
+            "log",
+            pretty,
+            "-z",
+            "--skip=" + skip.ToString(CultureInfo.InvariantCulture),
+            "--max-count=" + maxCount.ToString(CultureInfo.InvariantCulture),
+        };
+
+        GitResult result = await _runner.RunAsync(repoRoot, args, ct).ConfigureAwait(false);
+        if (!result.Success)
+        {
+            return Array.Empty<CommitInfo>();
+        }
+
+        return GitLogParser.Parse(result.StdOut);
+    }
 
     public Task<IReadOnlyList<ChangedFile>> GetChangedFilesAsync(string repoRoot, DiffSpec spec, CancellationToken ct) =>
         throw new NotImplementedException();
