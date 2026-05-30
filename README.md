@@ -5,6 +5,8 @@ Inspect uncommitted changes, what a single commit introduced, or the diff betwee
 commits — in a modern Fluent UI. It is not a full Git client (no staging, committing, or
 pushing); it only visualises.
 
+![GitDelta showing a side-by-side diff in dark theme](docs/images/gitdelta-side-by-side.png)
+
 ## Three compare modes
 
 | Mode | How to reach it | What you see |
@@ -12,6 +14,23 @@ pushing); it only visualises.
 | **Working tree vs HEAD** | Launch `gitdelta` in a repo, or click "Open folder" | All uncommitted changes in the working copy |
 | **Single commit vs parent** | Click any commit in the history list | What that commit changed |
 | **Any two commits** | Select two commits in the history list | The diff between them |
+
+## What the diff view gives you
+
+GitDelta is built for reading diffs comfortably:
+
+- **Side-by-side or unified** layout — switch any time, and your preferred default is remembered.
+- **Syntax highlighting** for common languages, plus **word-level highlighting** of the exact text that changed inside each modified line.
+- **Change bars, line numbers, and clear added / modified / deleted colouring** so changes are easy to scan.
+- **Search within a diff**, with next / previous match navigation, to jump straight to the text you care about.
+- **Whitespace and word-wrap toggles**, with adjustable context lines and tab size.
+- **Browse changed files** as a flat list or grouped by folder; copy a file's diff or **open it in your own editor** with one click (set your editor command in Settings).
+- **Light and dark themes** that follow your Windows setting, on a native Fluent (Mica) window.
+- **Fast terminal launch** — running `gitdelta` in a repo opens straight to its uncommitted changes.
+
+The same diff, viewed inline in the unified layout:
+
+![GitDelta showing a unified diff](docs/images/gitdelta-unified.png)
 
 ## Installation
 
@@ -39,7 +58,7 @@ The installer will:
 
 ### "Windows protected your PC" / SmartScreen warning
 
-GitDelta v1 is **not code-signed**. When you run the installer, Microsoft Defender SmartScreen
+GitDelta is **not yet code-signed**. When you run the installer, Microsoft Defender SmartScreen
 may show **"Windows protected your PC — Unknown publisher"**. This is expected for unsigned
 software and does not indicate a problem with the download.
 
@@ -52,7 +71,7 @@ If you prefer, verify the download first: each GitHub Release lists the SHA-256 
 installer. Compare it with:
 
 ```powershell
-Get-FileHash .\GitDelta-1.0.0-setup.exe -Algorithm SHA256
+Get-FileHash .\GitDelta-0.1.0-setup.exe -Algorithm SHA256
 ```
 
 ## Using the `gitdelta` command
@@ -89,7 +108,7 @@ PATH entry it added.
 ### Build and test
 
 ```powershell
-# Restore, build (zero warnings), and run all 254 unit tests.
+# Restore, build (zero warnings), and run the full unit-test suite.
 dotnet build GitDelta.sln
 dotnet test  GitDelta.sln
 ```
@@ -108,7 +127,7 @@ dotnet publish src/GitDelta.UI/GitDelta.UI.csproj -c Release -r win-x64 -p:Publi
 
 ```powershell
 # Publish + download the bundled .NET runtime + compile Inno Setup script.
-# Output: installer\Output\GitDelta-1.0.0-setup.exe
+# Output: installer\Output\GitDelta-0.1.0-setup.exe
 pwsh -File build/make-installer.ps1
 
 # Skip the bundled runtime (installer opens the download page if runtime is missing):
