@@ -196,9 +196,9 @@ end;
 
 procedure InitializeWizard();
 begin
-  { Record whether the bundle was compiled into this setup (source existed at compile time
-    AND extracted to {tmp}). We probe {tmp} after [Files] extraction in CurStepChanged;
-    here we initialise to False. }
+  (* Record whether the bundle was compiled into this setup (source existed at compile time
+     AND extracted to {tmp}). We probe {tmp} after [Files] extraction in CurStepChanged;
+     here we initialise to False. *)
   GBundledRuntimePresent := False;
 end;
 
@@ -206,7 +206,7 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
-    { Re-evaluate after [Files] extraction so the {tmp} probe is accurate. }
+    (* Re-evaluate after [Files] extraction so the {tmp} probe is accurate. *)
     GBundledRuntimePresent := FileExists(ExpandConstant('{tmp}\{#RuntimeInstaller}'));
     if WizardIsTaskSelected('addtopath') then
       AddDirToPath(ExpandConstant('{app}'));
